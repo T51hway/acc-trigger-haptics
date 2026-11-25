@@ -77,6 +77,7 @@ SLIDERS = (
     ("grip_road", "路面纹理", 3.0),
     ("grip_kerb", "路肩", 3.0),
     ("trigger_floor", "刹车底层", 0.50),
+    ("throttle_floor", "油门底层", 0.35),
     ("trigger_event", "事件强度", 1.00),
 )
 
