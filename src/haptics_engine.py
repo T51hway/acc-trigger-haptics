@@ -127,7 +127,7 @@ CONFIG_TEMPLATE = """# ACC 手柄震动 · 手感设置
 grip_road = %(grip_road).2f      # 握把·路面纹理
 grip_kerb = %(grip_kerb).2f      # 握把·路肩
 
-# 左扳机：刹车压力底层（0 ~ 0.35）。D5 基准 0.20；
+# 左扳机：刹车压力底层（0 ~ 0.35 比较合理，代码上限 0.50）。D5 基准 0.20；
 # 调高更有实感，但锁死 / ABS 的对比会变弱。
 trigger_floor = %(trigger_floor).2f
 

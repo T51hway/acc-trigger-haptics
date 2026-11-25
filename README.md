@@ -136,7 +136,7 @@ acc-pad-haptics/
 ├─ .gitignore
 ├─ 开启接管.bat            # 装代理 DLL，屏蔽 ACC 的震动写入
 ├─ 恢复原生.bat            # 撤掉代理，恢复 ACC 原生震动
-├─ docs/                  # 补充文档、实测数据（待建）
+├─ docs/                  # 交接.md + captures/（实测 CSV，不入库）
 ├─ src/                   # 功能代码
 │   ├─ main.py           # 主循环：60Hz 把三层接起来
 │   ├─ pad_driver.py      # 马达驱动层：60Hz 蓝牙 HID，断线重连、单实例、退出清零
