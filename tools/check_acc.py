@@ -6,6 +6,8 @@
   - wheelSlip 的量纲是什么，能不能直接当 0~1 用
   - slipRatio 到底有没有值，是整数还是小数（官方文档写 int，很可疑）
   - kerbVibration 等四个震动通道的实际范围
+  - slipAngle 的单位和推头时的分布（2026-11-25 加，用于标定推头通道）
+  - wheelLoad 行驶时是否非零（2026-11-25 加，顺带回答交接文档里的老问题）
 
 用法：
     python tools/check_acc.py            # 实时刷新，Ctrl+C 结束并打印统计
@@ -50,7 +52,10 @@ SCALARS = [
 VECTORS = [
     # 名字,              偏移
     ("wheelSlip",        56),
+    ("wheelLoad",        72),        # 2026-11-25 加：验证行驶时是否非零
+    ("suspensionTravel", 184),
     ("slipRatio",        640),
+    ("slipAngle",        656),       # 2026-11-25 加：推头标定用
     ("brakePressure",    716),
 ]
 
@@ -252,6 +257,9 @@ def main():
              "kerbVibration", "slipVibrations", "gVibrations", "absVibrations"]
             + ["wheelSlip_" + w for w in ("LF", "RF", "LR", "RR")]
             + ["slipRatio_" + w for w in ("LF", "RF", "LR", "RR")]
+            + ["slipAngle_" + w for w in ("LF", "RF", "LR", "RR")]
+            + ["wheelLoad_" + w for w in ("LF", "RF", "LR", "RR")]
+            + ["suspTravel_" + w for w in ("LF", "RF", "LR", "RR")]
             + ["brakePressure_" + w for w in ("LF", "RF", "LR", "RR")])
 
     if args.seconds:
@@ -321,7 +329,8 @@ def main():
                      d["accG"][0], d["accG"][1], d["accG"][2],
                      d["kerbVibration"], d["slipVibrations"],
                      d["gVibrations"], d["absVibrations"]]
-                    + d["wheelSlip"] + d["slipRatio"] + d["brakePressure"])
+                    + d["wheelSlip"] + d["slipRatio"] + d["slipAngle"]
+                    + d["wheelLoad"] + d["suspensionTravel"] + d["brakePressure"])
                 csv_file.flush()
 
             # 打印
@@ -334,6 +343,10 @@ def main():
                 "%s %7.3f" % (WHEELS[i], d["wheelSlip"][i]) for i in range(4)))
             lines.append("  slipRatio     " + "  ".join(
                 "%s %7.3f" % (WHEELS[i], d["slipRatio"][i]) for i in range(4)))
+            lines.append("  slipAngle     " + "  ".join(
+                "%s %7.3f" % (WHEELS[i], d["slipAngle"][i]) for i in range(4)))
+            lines.append("  wheelLoad     " + "  ".join(
+                "%s %6.0f" % (WHEELS[i], d["wheelLoad"][i]) for i in range(4)))
             lines.append("  accG          " + "  ".join(
                 "%s %7.3f" % (AXES[i], d["accG"][i]) for i in range(3)))
             lines.append("  震动通道      路肩 %6.3f   打滑 %6.3f   纵向G %6.3f   ABS %6.3f"
