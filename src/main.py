@@ -71,7 +71,7 @@ def _status_line(snap, motors, engine):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="ACC 四马达震动主循环")
+    parser = argparse.ArgumentParser(description="ACC Trigger Haptics · 主循环")
     parser.add_argument("--hz", type=float, default=60.0,
                         help="主循环频率，默认 60（和马达写入频率一致）")
     parser.add_argument("--status", action="store_true",
@@ -87,7 +87,7 @@ def main():
         pass
 
     print("=" * 62)
-    print("ACC 四马达震动 · v%s" % VERSION)
+    print("ACC Trigger Haptics · v%s" % VERSION)
     print("=" * 62)
     print("开始前确认：")
     print("  1. 已经运行过 开启接管.bat，否则 ACC 会每帧冲掉扳机")

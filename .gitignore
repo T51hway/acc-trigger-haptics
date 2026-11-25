@@ -75,4 +75,4 @@ docs/captures/
 *.toml.tmp
 
 # 打包产物（由 PyInstaller 生成，不进仓库）
-ACC震动面板.exe
+ACC Trigger Haptics.exe

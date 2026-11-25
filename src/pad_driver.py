@@ -81,7 +81,7 @@ STOP_JOIN_TIMEOUT = 2.0          # 等写入线程收尾的上限（秒）
 XBOX_VENDOR_ID = 0x045E
 WIRELESS_ADAPTER_PID = 0x0B00    # 045E:0B00 是无线适配器，不是手柄
 
-MUTEX_NAME = "Local\\acc-pad-haptics.motor-writer"
+MUTEX_NAME = "Local\\acc-trigger-haptics.motor-writer"
 ERROR_ALREADY_EXISTS = 183
 
 # 控制台退出事件（SetConsoleCtrlHandler）

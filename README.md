@@ -1,8 +1,10 @@
-# ACC 手柄扳机震动（暂名）
+# ACC Trigger Haptics
+
+> 非官方个人项目，与 Kunos Simulazioni / 505 Games 无关。
 
 一个运行在 Windows 上的外部程序：读《神力科莎：竞技版》（Assetto Corsa Competizione，简称 **ACC**）的遥测数据，驱动 Xbox 手柄的**四个**震动马达，重点补上 ACC 原生不支持的**扳机震动**。
 
-> **当前状态：阶段 3 第一版手感已确认可用（2026-11-25）。**
+> **当前状态：v0.1.0 · 阶段 3 第一版手感已确认可用（2026-11-25）。**
 > 阶段 0/1/2 全部打通：能读 ACC 遥测、能驱动四个马达、主循环实车确认。
 > 第一版手感（握把、扳机、ABS 8Hz、后轮打滑）已经能用，参数做成可热调：
 > 双击 `调手感.bat` 改 `手感设置.toml`，保存后 1 秒内生效。
@@ -116,7 +118,7 @@ XSX / Xbox One 手柄在 ACC 里四个马达全部有活儿干：
 ## 控制面板（可选）
 
 双击 **`启动面板.bat`** 可以改用图形界面：四盏状态灯（代理 DLL / 手柄 / ACC 遥测 / 震动）、
-四个滑块（拖动即保存）、开始 / 停止震动，以及代理 DLL 的一键装卸。
+五个滑块（拖动即保存）、开始 / 停止震动，以及代理 DLL 的一键装卸。
 它和 `调手感.bat` 改的是同一个文件，两种方式都能用。
 
 > 面板需要带 tkinter 的完整 Python（本机是用 uv 装的 3.13.3），路径写在本机专用的 bat 里。
@@ -128,11 +130,11 @@ XSX / Xbox One 手柄在 ACC 里四个马达全部有活儿干：
 
 ```
 .venv-build\Scripts\python.exe -m PyInstaller --noconfirm --clean --onefile --windowed ^
-    --name ACC-Panel --paths src ^
+    --name ACC-Trigger-Haptics --paths src ^
     --add-data "tools\xinput_proxy\xinput1_3.dll;tools\xinput_proxy" src\panel.py
 ```
 
-然后把 `dist\ACC-Panel.exe` 复制到仓库根目录、改名 `ACC震动面板.exe`。
+然后把 `dist\ACC-Trigger-Haptics.exe` 复制到仓库根目录、改名 `ACC Trigger Haptics.exe`。
 **exe 必须和 `手感设置.toml` 放在同一层**——它按自己所在的目录找配置，找不到就用默认值。
 （打包后 `__file__` 指向临时解压目录，所以代码里用 `sys.frozen` 区分了两种情形。）
 
@@ -158,7 +160,7 @@ exe 和 bat 是两条并行入口，随时可以只用其中一个。
 `tools/` 下的脚本和代理 DLL 已就位，其余仍是规划。
 
 ```
-acc-pad-haptics/
+acc-trigger-haptics/
 ├─ README.md              # 本文件
 ├─ 设计说明.md            # 决策记录，重要
 ├─ .gitignore

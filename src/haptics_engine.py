@@ -140,7 +140,7 @@ TUNING_RANGES = {
 }
 
 CONFIG_NAME = "手感设置.toml"
-CONFIG_TEMPLATE = """# ACC 手柄震动 · 手感设置
+CONFIG_TEMPLATE = """# ACC Trigger Haptics · 手感设置
 #
 # 只改等号 = 右边的数字。# 后面是说明，改了不会生效。
 # 改完保存：程序每秒检查一次，1 秒内生效，不用重启。

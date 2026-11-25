@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""控制面板：状态灯 + 四个滑块 + 起停 + 代理 DLL 装卸。
+"""控制面板：状态灯 + 五个滑块 + 起停 + 代理 DLL 装卸。
 
 为什么面板自带一份循环，而不是复用 main.py：
     `main.py` 是目前唯一实车验证过的链路，也是出问题时的退路。
@@ -321,7 +321,7 @@ class Panel:
         self._write_job = None
         self._closing = False
 
-        root.title("ACC 震动面板 %s" % VERSION)
+        root.title("ACC Trigger Haptics %s" % VERSION)
         root.resizable(False, False)
         root.protocol("WM_DELETE_WINDOW", self.close)
 
