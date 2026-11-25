@@ -3,6 +3,9 @@
 [English](README.md) | 简体中文
 
 > 非官方个人项目，与 Kunos Simulazioni / 505 Games 无关。
+>
+> 本项目使用 AI 生成内容（包括代码、文档和调参建议），可能存在错误；
+> 使用前请自行审查和测试。
 
 给《神力科莎：竞技版》（ACC）补上 Xbox 手柄的**扳机震动**。ACC 原生只震两个握把，
 这个程序读游戏的遥测，把四个马达都用起来：握把给路感，扳机给刹车、油门和轮胎极限。
@@ -132,5 +135,6 @@ python src/panel.py     # 图形面板
 
 MIT，见 `LICENSE`。
 
-失控（后轮横滑）的判据改编自
+失控（后轮横滑）和推头（前轮抓地损失）的判定思路改编自
 [ACC DualSense Feedback](https://github.com/Adudumax/ACC-DualSense-Feedback)（MIT）。
+只借鉴判定思路，Xbox 手柄的马达驱动是本项目自己的实现。

@@ -3,6 +3,9 @@
 English | [简体中文](README.zh-CN.md)
 
 > Unofficial personal project. Not affiliated with Kunos Simulazioni or 505 Games.
+>
+> This project uses AI-generated content (code, documentation and tuning). It may contain
+> errors; review and test before use.
 
 Adds Xbox controller **trigger haptics** to Assetto Corsa Competizione (ACC).
 ACC only rumbles the two grips; this program reads the game's telemetry and uses
@@ -138,5 +141,6 @@ python src/panel.py     # graphical panel
 
 MIT, see `LICENSE`.
 
-The rear-slide detection is adapted from
+The rear-slide (loss-of-control) and understeer detection logic is adapted from
 [ACC DualSense Feedback](https://github.com/Adudumax/ACC-DualSense-Feedback) (MIT).
+Only the detection approach was adapted; the Xbox HID motor driver is this project's own.
