@@ -14,7 +14,7 @@
 两层（D5）：
     底层：刹车压力 × 20%。不看屏幕也知道自己踩了几成，上限压得很低，
           免得盖住上层信息。
-    上层：临界事件，60~80ms，最高 70%。
+    上层：临界事件，60~80ms，最高 75%（可调，见 手感设置.toml）。
 
 混音（D11）：
     加权求和 + 单次软限幅。同一马达同一时刻最多 1 个主效果 + 1 个辅效果
@@ -25,7 +25,10 @@
     前轮抱死不是渐进的，实测 -0.312 → -0.908 不到 20 毫秒，中间没有过渡。
     所以做不出"逼近极限时逐渐增强"，只能报两种状态：
         已经锁死（ABS 没介入时）        → 60~80ms 的急促脉冲
-        ABS 正在救你（有介入信号时）    → 跟着 absVibrations 断续的嗒嗒
+        ABS 正在救你（有介入信号时）    → 同样 70ms 的脉冲，120ms 一次（约 8Hz）
+
+    判 ABS 用 abs / absVibrations，但**节奏由我们自己出**：游戏的方波频率没保证，
+    太快时偏心马达只会把它抹成一条连续震动，听不出"嗒嗒"。
 
 ABS 开 / 关（D10）：
     遥测里没有"ABS 是否启用"这个字段，所以这里不猜设置，直接看信号：
@@ -46,10 +49,17 @@ ABS 开 / 关（D10）：
 
 命令行自检（不需要 ACC，也不需要手柄）：
     python src/haptics_engine.py
+
+手感设置：
+    仓库根目录的 `手感设置.toml`（双击 `调手感.bat` 编辑）。
+    改完保存，正在跑的程序 1 秒内自动生效。没有这个文件就用内置默认值。
 """
 
 import math
+import sys
 import time
+import tomllib
+from pathlib import Path
 from typing import NamedTuple
 
 from acc_telemetry import Snapshot
@@ -57,8 +67,8 @@ from acc_telemetry import Snapshot
 # ── 参数初值（设计说明.md 第六节）────────────────────────────────
 # 这些是"从数据分布推出来的候选值"，不是手感验证过的值。
 # 阶段 3 的闭眼测试要重新定，先集中放在这里，方便一处改。
-PRESSURE_FLOOR_MAX = 0.20        # 底层压力反馈上限 20%
-EVENT_AMPLITUDE = 0.70           # 临界事件幅度 70%
+PRESSURE_FLOOR_MAX = 0.20        # 底层压力反馈上限 20%（D5）
+EVENT_AMPLITUDE = 0.75           # 临界 / ABS 事件幅度（第一版手感，从 70% 提上来）
 EVENT_DURATION = 0.070           # 事件持续 70ms（设计区间 60~80ms）
 EVENT_RELEASE = 0.015            # 最后 15ms 渐落，避免硬切
 EVENT_REFRACTORY = 0.120         # 不应期 120ms，防止连成持续震动
@@ -71,10 +81,12 @@ REAR_ATTACK = 0.015              # 打滑起振时间 15ms
 REAR_RELEASE = 0.100             # 收振时间 100ms
 
 ABS_GATE = 0.05                  # abs / absVibrations 超过它才算"ABS 在动作"
-ABS_AMPLITUDE = 0.70             # ABS 嗒嗒的幅度
 
-GRIP_ROAD_WEIGHT = 0.80          # 路面纹理在握把上的权重
-GRIP_KERB_WEIGHT = 0.90          # 路肩在握把上的权重
+GRIP_ROAD_WEIGHT = 1.00          # 路面纹理在握把上的权重
+GRIP_ROAD_CURVE = 0.50           # 轻纹理抬升（越小越明显）
+GRIP_KERB_WEIGHT = 1.15          # 路肩在握把上的权重
+KERB_SIDE_BASE = 0.80            # 路肩在两侧的基础占比
+KERB_SIDE_SPAN = 0.25            # 轮荷差带来的左右偏移（最大 1.05 : 0.55）
 G_VIBRATION_DEADZONE = 0.05      # gVibrations 不设死区就是永远在震（实测 91.5% 的帧 >0.02）
 G_VIBRATION_FULL = 7.5           # 实测上限
 KERB_DEADZONE = 0.005
@@ -83,6 +95,88 @@ KERB_FULL = 0.10                 # kerbVibration 被截断在 ±0.1
 SECONDARY_CAP = 0.25             # 辅效果封顶 25%（D11）
 SOFT_KNEE = 0.70                 # 软限幅的拐点，拐点以下不动
 MIX_FLOOR = 0.002                # 小于这个的贡献当作没有（报文本来就是 1% 一档）
+
+
+# ══════════════════════════════════════════════════════════════════
+# 手感设置（外部文件）
+# ══════════════════════════════════════════════════════════════════
+# 只把最常调的四项放出去。其余（阈值、曲线、混音预算）等阶段 3 的
+# 闭眼测试有结论了再往外放，免得一次给太多旋钮反而不知道动哪个。
+DEFAULT_TUNING = {
+    "grip_road": GRIP_ROAD_WEIGHT,
+    "grip_kerb": GRIP_KERB_WEIGHT,
+    "trigger_floor": PRESSURE_FLOOR_MAX,
+    "trigger_event": EVENT_AMPLITUDE,
+}
+TUNING_RANGES = {
+    "grip_road": (0.0, 3.0),
+    "grip_kerb": (0.0, 3.0),
+    "trigger_floor": (0.0, 0.50),
+    "trigger_event": (0.0, 1.0),
+}
+
+CONFIG_NAME = "手感设置.toml"
+CONFIG_TEMPLATE = """# ACC 手柄震动 · 手感设置
+#
+# 改完保存就行：程序每秒检查一次，1 秒内自动生效，不用重启。
+# 0.0 ~ 1.0 是强度；增益 1.0 是基准，觉得不够可以到 1.5、2.0。
+
+# ── 握把 ──────────────────────────────────────────────
+# 路面纹理强度：1.0 是基准。觉得路面太轻就加到 1.2 ~ 1.5。
+grip_road = %(grip_road).2f
+
+# 路肩强度：1.0 是基准。觉得路肩不够就加到 1.2 ~ 1.5。
+grip_kerb = %(grip_kerb).2f
+
+# ── 左扳机 ────────────────────────────────────────────
+# 刹车压力底层（0 ~ 0.35）。D5 建议 0.20。
+# 调高更有"踩下去"的实感，但锁死 / ABS 的脉冲就没那么突出。
+trigger_floor = %(trigger_floor).2f
+
+# 扳机事件强度：锁死 / ABS 脉冲 / 后轮打滑（0 ~ 1.0）。
+trigger_event = %(trigger_event).2f
+""" % DEFAULT_TUNING
+
+
+def config_path():
+    """手感设置放在仓库根目录，和 bat 同级，方便找。"""
+    return Path(__file__).resolve().parent.parent / CONFIG_NAME
+
+
+def load_tuning(path=None):
+    """读手感设置。没有文件、格式坏了、值超范围，都退回默认值。"""
+    tuning = dict(DEFAULT_TUNING)
+    path = Path(path) if path is not None else config_path()
+    try:
+        with open(path, "rb") as handle:
+            data = tomllib.load(handle)
+    except FileNotFoundError:
+        return tuning
+    except Exception as exc:
+        print("[手感] 读取 %s 失败：%s（先用默认值）" % (path.name, exc))
+        return tuning
+
+    for key, (low, high) in TUNING_RANGES.items():
+        if key not in data:
+            continue
+        try:
+            value = float(data[key])
+        except (TypeError, ValueError):
+            print("[手感] %s 不是数字，忽略。" % key)
+            continue
+        if not math.isfinite(value):
+            continue
+        tuning[key] = max(low, min(high, value))
+    return tuning
+
+
+def write_default_config(path=None):
+    """生成一份带注释的默认设置。已存在就不覆盖。"""
+    path = Path(path) if path is not None else config_path()
+    if path.exists():
+        return False
+    path.write_text(CONFIG_TEMPLATE, encoding="utf-8")
+    return True
 
 
 class Motors(NamedTuple):
@@ -172,16 +266,30 @@ def _load_bias(loads):
 class HapticsEngine:
     """把一帧遥测变成四个马达值。有状态：事件包络、不应期、打滑收放。"""
 
-    def __init__(self):
+    def __init__(self, tuning=None):
+        self.tuning = dict(DEFAULT_TUNING)
+        if tuning:
+            self.set_tuning(tuning)
         self._event_start = -1e9
+        self._abs_start = -1e9
         self._rear_level = 0.0
         self._last_update = None
         self.last_trace = {}
         self.last_metrics = {}
 
+    def set_tuning(self, tuning):
+        """更新手感参数（配置文件热重载用）。只认已知的键，越界会夹住。"""
+        if not tuning:
+            return
+        for key, (low, high) in TUNING_RANGES.items():
+            if key in tuning:
+                value = _num(tuning[key])
+                self.tuning[key] = max(low, min(high, value))
+
     def reset(self):
         """清掉事件和包络。遥测中断、回到维修区、换车时调一下。"""
         self._event_start = -1e9
+        self._abs_start = -1e9
         self._rear_level = 0.0
         self._last_update = None
         self.last_trace = {}
@@ -202,16 +310,18 @@ class HapticsEngine:
 
         bias = _load_bias(snap.wheel_load)
         road = _scale(_num(snap.g_vibrations),
-                      G_VIBRATION_DEADZONE, G_VIBRATION_FULL)
+                      G_VIBRATION_DEADZONE, G_VIBRATION_FULL) ** GRIP_ROAD_CURVE
         kerb = _scale(abs(_num(snap.kerb_vibration)), KERB_DEADZONE, KERB_FULL)
+        left_share = KERB_SIDE_BASE + KERB_SIDE_SPAN * bias
+        right_share = KERB_SIDE_BASE - KERB_SIDE_SPAN * bias
 
         left_grip, left_grip_trace = _mix([
-            ("路面", road * GRIP_ROAD_WEIGHT),
-            ("左路肩", kerb * (0.5 + 0.5 * bias) * GRIP_KERB_WEIGHT),
+            ("路面", road * self.tuning["grip_road"]),
+            ("左路肩", kerb * left_share * self.tuning["grip_kerb"]),
         ])
         right_grip, right_grip_trace = _mix([
-            ("路面", road * GRIP_ROAD_WEIGHT),
-            ("右路肩", kerb * (0.5 - 0.5 * bias) * GRIP_KERB_WEIGHT),
+            ("路面", road * self.tuning["grip_road"]),
+            ("右路肩", kerb * right_share * self.tuning["grip_kerb"]),
         ])
 
         # ── 左扳机：刹车压力打底，锁死 / ABS 覆盖上去 ────────────
@@ -221,20 +331,27 @@ class HapticsEngine:
         abs_pulse = _clamp01(abs(_num(snap.abs_vibrations)))
         abs_active = max(abs_flag, abs_pulse) > ABS_GATE
 
-        left_trigger_parts = [("刹车压力", brake * PRESSURE_FLOOR_MAX)]
+        left_trigger_parts = [("刹车压力", brake * self.tuning["trigger_floor"])]
 
         if abs_active:
-            # 节奏用 absVibrations 这个方波，abs 只当"ABS 在工作"的开关。
-            # 实测 abs 只有 0 和 1（不是强度），拿它当幅度会变成一直满着；
-            # 方波归零的那几拍就让它静音，这才有"嗒嗒"的断续感。
-            if abs_pulse > 0.0:
-                left_trigger_parts.append(("ABS 介入", ABS_AMPLITUDE * abs_pulse))
+            # 自己出节奏：70ms 脉冲 + 120ms 不应期，约 8Hz。
+            # 不跟游戏的 absVibrations 方波：它的频率没保证，太快时 ERM
+            # 只会把它抹成一条连续的震动，听不出"嗒嗒"。
+            if now >= self._abs_start + EVENT_REFRACTORY:
+                self._abs_start = now
+            age = now - self._abs_start
+            if age < EVENT_DURATION:
+                amplitude = self.tuning["trigger_event"]
+                remaining = EVENT_DURATION - age
+                if remaining < EVENT_RELEASE:
+                    amplitude *= remaining / EVENT_RELEASE
+                left_trigger_parts.append(("ABS 介入", amplitude))
         elif front_slip <= FRONT_LOCK_THRESHOLD:
             if now >= self._event_start + EVENT_REFRACTORY:
                 self._event_start = now
             age = now - self._event_start
             if age < EVENT_DURATION:
-                amplitude = EVENT_AMPLITUDE
+                amplitude = self.tuning["trigger_event"]
                 remaining = EVENT_DURATION - age
                 if remaining < EVENT_RELEASE:
                     amplitude *= remaining / EVENT_RELEASE
@@ -247,7 +364,7 @@ class HapticsEngine:
         target = 0.0
         if rear_slip > REAR_SLIP_THRESHOLD:
             severity = _scale(rear_slip, REAR_SLIP_THRESHOLD, REAR_SLIP_FULL)
-            target = EVENT_AMPLITUDE * severity ** REAR_CURVE
+            target = self.tuning["trigger_event"] * severity ** REAR_CURVE
 
         if first_tick or dt <= 0.0:
             self._rear_level = target
@@ -335,12 +452,18 @@ def _run(engine, label, snap, clock, seconds=0.05):
 
 
 def main():
+    if "--write-config" in sys.argv:
+        path = config_path()
+        created = write_default_config(path)
+        print(("已生成" if created else "已存在") + "：" + str(path))
+        return
+
     print("=" * 62)
     print("判断与混音层自检（src/haptics_engine.py）")
     print("=" * 62)
     print("喂几段写死的遥测，看四个马达的输出。不需要 ACC，也不需要手柄。")
 
-    engine = HapticsEngine()
+    engine = HapticsEngine(load_tuning())
     clock = 0.0
 
     cases = [
@@ -366,13 +489,13 @@ def main():
     print("看这几个地方")
     print("=" * 62)
     print("  滑行        四个都应该是 0（不能有底噪）")
-    print("  轻刹 30%    左扳机约 6%（20% × 0.3）")
-    print("  前轮锁死    左扳机 80% 上下，来源是“前轮锁死 + 刹车压力”")
-    print("  ABS 动作    左扳机 80% 上下，来源是“ABS 介入 + 刹车压力”")
+    print("  轻刹 30%    左扳机跟着 trigger_floor 走（默认约 6%，个人配置会更高）")
+    print("  前轮锁死    左扳机 90% 上下，来源是“前轮锁死 + 刹车压力”")
+    print("  ABS 动作    左扳机 90% 上下，来源是“ABS 介入 + 刹车压力”")
     print("  后轮打滑    右扳机跟着滑移量走，滑得越多越强")
     print("  压路肩      两侧握把都有，压到的那一侧更强")
     print()
-    print("参数都在文件开头，阶段 3 按手感改那几个数就行。")
+    print("想调强度：双击 调手感.bat，改完保存，1 秒内生效。")
 
 
 if __name__ == "__main__":

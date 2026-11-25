@@ -66,3 +66,7 @@ docs/captures/
 遥测自检.bat
 混音自检.bat
 启动震动.bat
+调手感.bat
+
+# 个人手感设置（可调参数，不进仓库）
+手感设置.toml

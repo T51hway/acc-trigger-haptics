@@ -29,8 +29,15 @@ import sys
 import time
 
 from acc_telemetry import AccTelemetry
-from haptics_engine import HapticsEngine
+from haptics_engine import HapticsEngine, config_path, load_tuning
 from pad_driver import PadBusy, PadDriver, PadError
+
+
+def _file_mtime(path):
+    try:
+        return path.stat().st_mtime
+    except OSError:
+        return None
 
 
 def _source_names(trace, key):
@@ -42,9 +49,10 @@ def _source_names(trace, key):
 
 def _status_line(snap, motors, engine):
     trace = engine.last_trace
-    return ("[%07d] %6.1f km/h  档 %-2s  刹车 %.2f  |  "
+    abs_on = 1 if (snap.abs_level > 0.05 or abs(snap.abs_vibrations) > 0.05) else 0
+    return ("[%07d] %6.1f km/h  档 %-2s  刹车 %.2f  ABS %d  |  "
             "扳机 %3.0f/%3.0f  握把 %3.0f/%3.0f  |  左 %s ｜ 右 %s"
-            % (snap.packet_id, snap.speed_kmh, snap.gear_label, snap.brake,
+            % (snap.packet_id, snap.speed_kmh, snap.gear_label, snap.brake, abs_on,
                motors.left_trigger * 100.0, motors.right_trigger * 100.0,
                motors.left_grip * 100.0, motors.right_grip * 100.0,
                _source_names(trace, "left_trigger"),
@@ -78,7 +86,14 @@ def main():
     print()
 
     telemetry = AccTelemetry()
-    engine = HapticsEngine()
+    tuning_file = config_path()
+    if tuning_file.exists():
+        print("手感设置：%s（改完保存，1 秒内生效）" % tuning_file.name)
+    else:
+        print("手感设置：使用默认值（双击 调手感.bat 可以改）")
+    print()
+
+    engine = HapticsEngine(load_tuning(tuning_file))
     driver = PadDriver()
 
     try:
@@ -99,11 +114,21 @@ def main():
     have_signal = False
     last_status = 0.0
     exit_code = 0
+    config_mtime = _file_mtime(tuning_file)
+    last_config_check = 0.0
 
     try:
         while True:
             snap = telemetry.latest()
             now = time.perf_counter()
+
+            if now - last_config_check >= 1.0:
+                last_config_check = now
+                mtime = _file_mtime(tuning_file)
+                if mtime is not None and mtime != config_mtime:
+                    config_mtime = mtime
+                    engine.set_tuning(load_tuning(tuning_file))
+                    print("[手感] 设置已重新读取。", flush=True)
 
             if snap is None:
                 # 没数据就不要喂旧快照。清零一次，引擎的包络也一起清掉。
