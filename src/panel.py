@@ -42,6 +42,7 @@ from haptics_engine import (                               # noqa: E402
     HapticsEngine, config_path, load_tuning, write_default_config,
 )
 from pad_driver import PadBusy, PadDriver                  # noqa: E402
+from version import VERSION                                # noqa: E402
 
 
 def _app_dir():
@@ -320,7 +321,7 @@ class Panel:
         self._write_job = None
         self._closing = False
 
-        root.title("ACC 震动面板")
+        root.title("ACC 震动面板 %s" % VERSION)
         root.resizable(False, False)
         root.protocol("WM_DELETE_WINDOW", self.close)
 
@@ -329,7 +330,7 @@ class Panel:
 
         self.runner = Runner(self.log)
         self.runner.start()
-        self.log("面板已启动")
+        self.log("面板已启动 v%s" % VERSION)
 
         self._tick()
 

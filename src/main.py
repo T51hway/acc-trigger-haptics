@@ -31,6 +31,7 @@ import time
 from acc_telemetry import AccTelemetry
 from haptics_engine import HapticsEngine, config_path, load_tuning
 from pad_driver import PadBusy, PadDriver, PadError
+from version import VERSION
 
 
 def _file_mtime(path):
@@ -86,7 +87,7 @@ def main():
         pass
 
     print("=" * 62)
-    print("ACC 四马达震动 · 联调版（阶段 2）")
+    print("ACC 四马达震动 · v%s" % VERSION)
     print("=" * 62)
     print("开始前确认：")
     print("  1. 已经运行过 开启接管.bat，否则 ACC 会每帧冲掉扳机")
