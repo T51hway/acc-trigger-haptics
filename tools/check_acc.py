@@ -13,6 +13,9 @@
     python tools/check_acc.py            # 实时刷新，Ctrl+C 结束并打印统计
     python tools/check_acc.py --once     # 只打印一帧就退出
     python tools/check_acc.py --hz 20    # 刷新频率（默认 10）
+    python tools/check_acc.py --seconds 180 --csv x.csv
+                                         # 倒计时采集；开始/剩30秒/剩10秒/结束都有提示音
+    python tools/check_acc.py --no-beep  # 不出声（自动化测试用）
 
 只用 Python 标准库。
 """
@@ -92,6 +95,27 @@ def die(title, detail):
         print("  " + line)
     print()
     sys.exit(1)
+
+
+def _beep(freq, ms):
+    """响一声。没有声卡或控制台也能跑，出错就算了。"""
+    try:
+        import winsound
+        winsound.Beep(int(freq), int(ms))
+    except Exception:
+        pass
+
+
+def _set_title(text):
+    try:
+        ctypes.windll.kernel32.SetConsoleTitleW(str(text))
+    except Exception:
+        pass
+
+
+def _mmss(seconds):
+    seconds = max(0, int(seconds))
+    return "%d:%02d" % (seconds // 60, seconds % 60)
 
 
 def open_mapping():
@@ -226,6 +250,8 @@ def main():
                     help="把每帧原始数据另存为 csv，便于离线分析")
     ap.add_argument("--seconds", type=float, default=0,
                     help="跑满这么多秒自动停下（默认 0 = 一直跑，按 Ctrl+C 结束）")
+    ap.add_argument("--no-beep", action="store_true",
+                    help="不响提示音（自动化测试用）")
     args = ap.parse_args()
 
     # 管道输出时统一成 UTF-8；真控制台保持系统默认（Python 会走宽字符接口）
@@ -266,7 +292,11 @@ def main():
         print()
         print("开始记录，共 %d 秒（约 %.0f 分钟）。" % (args.seconds, args.seconds / 60.0))
         print("现在切到 ACC 开始开车，时间到了会自动停下。")
+        print("听声音就行：开始 1 声、剩 30 秒 2 声、剩 10 秒 3 声、结束 1 长声。")
         print()
+        if not args.no_beep:
+            _beep(880, 120)
+        _set_title("采集中…")
 
     # 刷新率：用包号的绝对增量算，采样慢也不会低估
     win_start = time.perf_counter()
@@ -284,6 +314,9 @@ def main():
     last_plain = 0.0
     t_start = time.perf_counter()
     timed_out = False
+    cue_30 = False
+    cue_10 = False
+    last_title = 0.0
 
     try:
         while True:
@@ -293,6 +326,26 @@ def main():
 
             # 刷新率估算
             now = time.perf_counter()
+
+            # 倒计时提示：全屏开车看不见窗口，用声音和标题栏报进度
+            if args.seconds:
+                left = max(0.0, args.seconds - (now - t_start))
+                if not args.no_beep:
+                    if left <= 30 and not cue_30 and args.seconds > 32:
+                        cue_30 = True
+                        _beep(700, 100)
+                        time.sleep(0.06)
+                        _beep(700, 100)
+                    if left <= 10 and not cue_10:
+                        cue_10 = True
+                        for _ in range(3):
+                            _beep(700, 80)
+                            time.sleep(0.05)
+                if now - last_title >= 1.0:
+                    last_title = now
+                    _set_title("采集中 · 剩 %s · 已 %d 帧"
+                               % (_mmss(left), frames))
+
             if win_packet is None:
                 win_packet = d["packetId"]
                 win_start = now
@@ -412,7 +465,14 @@ def main():
     if timed_out:
         print()
         print("时间到，自动结束了。")
+        if not args.no_beep:
+            _beep(600, 500)
+        _set_title("采集完成（%d 帧）" % frames)
         stats.report()
+    elif args.seconds:
+        _set_title("采集结束（%d 帧）" % frames)
+    else:
+        _set_title("ACC 物理页")
 
 
 if __name__ == "__main__":
