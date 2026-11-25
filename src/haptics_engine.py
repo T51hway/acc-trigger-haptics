@@ -8,8 +8,14 @@
           driver.set_vibration(*engine.update(snapshot))
 
 分工（设计说明.md D4）：
-    扳机 ← 短促、突然、要立刻反应的事（锁死、打滑、ABS 介入）
+    扳机 ← 短促、突然、要立刻反应的事（锁死、打滑、ABS 介入、推头）
     握把 ← 持续、厚重、提供方位感的事（路面纹理）
+
+推头（2026-11-25 实测标定）：
+    判据是"前轮侧滑角比后轮大多少"，不是绝对角度——前轮被方向盘拧着走，
+    天生就比后轮大；真正推头时才会明显超过后轮。
+    110 秒实测：正常过弯差值 0.01~0.05 弧度，推头时 0.07~0.13。
+    所以 0.05 起、0.13 满，用 40ms 起振 / 200ms 收振跟随（推头是持续状态）。
 
 两层（D5）：
     底层：刹车压力 × 20%（左扳机）、油门压力 × 15%（右扳机）。
@@ -83,6 +89,18 @@ REAR_RELEASE = 0.100             # 收振时间 100ms
 
 ABS_GATE = 0.05                  # abs / absVibrations 超过它才算"ABS 在动作"
 
+# 推头：前轮比后轮多滑多少（弧度）。阈值来自 2026-11-25 的 110 秒实测：
+# 正常过弯差值 0.01~0.05，推头时 0.07~0.13。
+UNDERSTEER_START = 0.05          # 约 2.9°，开始有感觉
+UNDERSTEER_FULL = 0.13           # 约 7.4°，到满幅
+UNDERSTEER_CURVE = 0.7           # 温和抬升，别让刚推头就满
+UNDERSTEER_ATTACK = 0.040        # 40ms 起振
+UNDERSTEER_RELEASE = 0.200       # 200ms 收振：推头是持续状态，不要抖
+UNDERSTEER_SPEED_MIN = 25.0      # km/h 以下不判（停车、倒车、维修区）
+UNDERSTEER_SLIP_MAX = 0.5        # 弧度，超过这个算打转/出界，不判推头
+UNDERSTEER_MIN_REAR = 0.003      # 后轮几乎为 0 时没有参考，跳过
+UNDERSTEER_GAIN = 1.00           # 推头强度（独立于事件强度，见 手感设置.toml）
+
 GRIP_ROAD_WEIGHT = 0.21          # 路面纹理基准（2026-11-25 从 1.00 降下来：原标度整体偏大）
 GRIP_ROAD_CURVE = 0.50           # 轻纹理抬升（越小越明显）
 G_VIBRATION_DEADZONE = 0.05      # gVibrations 不设死区就是永远在震（实测 91.5% 的帧 >0.02）
@@ -103,12 +121,14 @@ DEFAULT_TUNING = {
     "trigger_floor": PRESSURE_FLOOR_MAX,
     "throttle_floor": THROTTLE_FLOOR_MAX,
     "trigger_event": EVENT_AMPLITUDE,
+    "understeer_gain": UNDERSTEER_GAIN,
 }
 TUNING_RANGES = {
     "grip_road": (0.0, 0.80),
     "trigger_floor": (0.0, 0.50),
     "throttle_floor": (0.0, 0.35),
     "trigger_event": (0.0, 1.0),
+    "understeer_gain": (0.0, 1.50),
 }
 
 CONFIG_NAME = "手感设置.toml"
@@ -130,6 +150,9 @@ trigger_floor = %(trigger_floor).2f
 throttle_floor = %(throttle_floor).2f
 
 trigger_event = %(trigger_event).2f   # 扳机事件：锁死 / ABS / 后轮打滑（0 ~ 1.0）
+
+# 右扳机：推头强度（前轮比后轮多滑时震）。1.0 是满幅，0 = 关掉推头。
+understeer_gain = %(understeer_gain).2f
 """ % DEFAULT_TUNING
 
 
@@ -273,6 +296,7 @@ class HapticsEngine:
         self._event_start = -1e9
         self._abs_start = -1e9
         self._rear_level = 0.0
+        self._understeer_level = 0.0
         self._grip_peak = [0.0, 0.0]
         self._last_update = None
         self.last_trace = {}
@@ -292,6 +316,7 @@ class HapticsEngine:
         self._event_start = -1e9
         self._abs_start = -1e9
         self._rear_level = 0.0
+        self._understeer_level = 0.0
         self._grip_peak = [0.0, 0.0]
         self._last_update = None
         self.last_trace = {}
@@ -373,9 +398,37 @@ class HapticsEngine:
         else:
             self._rear_level += (target - self._rear_level) * min(1.0, dt / REAR_RELEASE)
 
+        # ── 推头：前轮比后轮多滑（2026-11-25 按实测标定）──────────
+        # 只用侧滑角：前轮被方向盘拧着走，前轮侧滑角明显大于后轮，说明前轮在推。
+        # 打转/出界时四个角一起失真，这种帧跳过，别误报成推头。
+        speed = _num(snap.speed_kmh)
+        front_angle = max(abs(_num(snap.slip_angle[0])),
+                          abs(_num(snap.slip_angle[1])))
+        rear_angle = max(abs(_num(snap.slip_angle[2])),
+                         abs(_num(snap.slip_angle[3])))
+        understeer_target = 0.0
+        if (speed > UNDERSTEER_SPEED_MIN
+                and front_angle < UNDERSTEER_SLIP_MAX
+                and rear_angle < UNDERSTEER_SLIP_MAX
+                and rear_angle >= UNDERSTEER_MIN_REAR):
+            severity = _scale(front_angle - rear_angle,
+                              UNDERSTEER_START, UNDERSTEER_FULL)
+            understeer_target = (self.tuning["understeer_gain"]
+                                 * severity ** UNDERSTEER_CURVE)
+
+        if first_tick or dt <= 0.0:
+            self._understeer_level = understeer_target
+        elif understeer_target >= self._understeer_level:
+            self._understeer_level += ((understeer_target - self._understeer_level)
+                                       * min(1.0, dt / UNDERSTEER_ATTACK))
+        else:
+            self._understeer_level += ((understeer_target - self._understeer_level)
+                                       * min(1.0, dt / UNDERSTEER_RELEASE))
+
         right_trigger, right_trigger_trace = _mix([
             ("油门压力", throttle * self.tuning["throttle_floor"]),
             ("后轮打滑", self._rear_level),
+            ("推头", self._understeer_level),
         ])
 
         self.last_trace = {
@@ -393,6 +446,10 @@ class HapticsEngine:
             "abs_flag": abs_flag,
             "abs_pulse": abs_pulse,
             "road": road,
+            "speed": speed,
+            "front_angle": front_angle,
+            "rear_angle": rear_angle,
+            "understeer": self._understeer_level,
             "grip_peak_left": self._grip_peak[0],
             "grip_peak_right": self._grip_peak[1],
         }
@@ -479,6 +536,10 @@ def main():
                              slip_ratio=(-0.05, -0.05, 0.02, 0.02))),
         ("后轮打滑 0.50", dict(throttle=1.0, slip_ratio=(-0.02, -0.02, 0.50, 0.45))),
         ("全油门直道，不打滑", dict(throttle=1.0, slip_ratio=(0.01, 0.01, 0.02, 0.02))),
+        ("推头（前轮比后轮多滑）", dict(speed_kmh=130.0, throttle=1.0,
+                                    slip_angle=(0.15, 0.15, 0.06, 0.06))),
+        ("打转（四轮都大，不算推头）", dict(speed_kmh=80.0,
+                                     slip_angle=(0.9, 0.9, 0.85, 0.85))),
         ("路面纹理较重", dict(g_vibrations=2.0)),
     ]
 
@@ -496,6 +557,8 @@ def main():
     print("  ABS 动作    左扳机 90% 上下，来源是“ABS 介入 + 刹车压力”")
     print("  后轮打滑    右扳机跟着滑移量走，滑得越多越强")
     print("  全油门直道  右扳机约 15%（油门底层），滑起来会更强")
+    print("  推头        右扳机跟着“前轮比后轮多滑”的程度走")
+    print("  打转        四个角一起失真，不算推头，右扳机应该是 0")
     print("  路面纹理重  两侧握把一起震，强度跟路面基准走")
     print()
     print("想调强度：双击 调手感.bat，改完保存，1 秒内生效。")

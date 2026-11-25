@@ -48,9 +48,10 @@ def _source_names(trace, key):
 
 
 def _tuning_text(tuning):
-    return ("路面 %.2f ｜ 刹车底层 %.2f ｜ 油门底层 %.2f ｜ 事件 %.2f"
+    return ("路面 %.2f ｜ 刹车底层 %.2f ｜ 油门底层 %.2f ｜ 事件 %.2f ｜ 推头 %.2f"
             % (tuning["grip_road"], tuning["trigger_floor"],
-               tuning["throttle_floor"], tuning["trigger_event"]))
+               tuning["throttle_floor"], tuning["trigger_event"],
+               tuning["understeer_gain"]))
 
 
 def _status_line(snap, motors, engine):

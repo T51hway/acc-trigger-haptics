@@ -78,6 +78,7 @@ SLIDERS = (
     ("trigger_floor", "刹车底层", 0.50),
     ("throttle_floor", "油门底层", 0.35),
     ("trigger_event", "事件强度", 1.00),
+    ("understeer_gain", "推头强度", 1.50),
 )
 
 C_GREEN = "#2e7d32"
@@ -443,9 +444,10 @@ class Panel:
         except Exception as exc:
             self.log("保存手感失败：%s" % exc)
             return
-        self.log("手感已保存：路面 %.2f ｜ 刹车底层 %.2f ｜ 油门底层 %.2f ｜ 事件 %.2f"
+        self.log("手感已保存：路面 %.2f ｜ 刹车 %.2f ｜ 油门 %.2f ｜ 事件 %.2f ｜ 推头 %.2f"
                  % (values["grip_road"], values["trigger_floor"],
-                    values["throttle_floor"], values["trigger_event"]))
+                    values["throttle_floor"], values["trigger_event"],
+                    values["understeer_gain"]))
 
     def _start(self):
         if not proxy_installed():
