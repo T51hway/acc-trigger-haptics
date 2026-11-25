@@ -64,7 +64,8 @@ LOG_PATH = APP_DIR / "panel.log"
 PROXY_SOURCE = BUNDLE_DIR / "tools" / "xinput_proxy" / "xinput1_3.dll"
 PROXY_LOCAL = APP_DIR / "tools" / "xinput_proxy" / "xinput1_3.dll"   # 兜底
 
-# 和 开启接管.bat 用同一份候选路径：先找到的都行
+# ACC 目录探测：先试下面这些常见位置（本机就是第一个），
+# 再读 Steam 自己的库配置，兼容装在别的盘 / 自定义库的人。
 ACC_CANDIDATES = (
     r"E:\SteamLibrary\steamapps\common\Assetto Corsa Competizione\AC2\Binaries\Win64",
     r"D:\SteamLibrary\steamapps\common\Assetto Corsa Competizione\AC2\Binaries\Win64",
@@ -72,6 +73,10 @@ ACC_CANDIDATES = (
     r"C:\Program Files (x86)\Steam\steamapps\common\Assetto Corsa Competizione"
     r"\AC2\Binaries\Win64",
 )
+
+_ACC_RELATIVE = Path("steamapps") / "common" / "Assetto Corsa Competizione" \
+    / "AC2" / "Binaries" / "Win64"
+_ACC_CACHE = {"at": 0.0, "path": None}
 
 # 滑块：(键, 显示名, 上限)。上限只是"拖到头"的位置，不改变程序里的合法范围。
 SLIDERS = (
@@ -93,13 +98,73 @@ NO_WINDOW = 0x08000000          # CREATE_NO_WINDOW，跑 tasklist 时不闪黑�
 # ══════════════════════════════════════════════════════════════════
 # 小工具：ACC 目录 / 游戏是否在跑 / 手感文件读写
 # ══════════════════════════════════════════════════════════════════
+def _steam_roots():
+    """从注册表拿 Steam 安装目录（可能有多个）。"""
+    roots = []
+    try:
+        import winreg
+    except Exception:
+        return roots
+    targets = (
+        (winreg.HKEY_CURRENT_USER, r"Software\Valve\Steam", "SteamPath"),
+        (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\WOW6432Node\Valve\Steam", "InstallPath"),
+        (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Valve\Steam", "InstallPath"),
+    )
+    for hive, key, name in targets:
+        try:
+            with winreg.OpenKey(hive, key) as handle:
+                value, _kind = winreg.QueryValueEx(handle, name)
+        except OSError:
+            continue
+        if not value:
+            continue
+        path = Path(str(value).replace("\\", "/"))
+        if path not in roots:
+            roots.append(path)
+    return roots
+
+
+def _steam_libraries():
+    """Steam 根目录 + libraryfolders.vdf 里登记的其它库。"""
+    libraries = []
+    for root in _steam_roots():
+        libraries.append(root)
+        config = root / "steamapps" / "libraryfolders.vdf"
+        try:
+            text = config.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        for match in re.finditer(r'"path"\s+"([^"]+)"', text):
+            path = Path(match.group(1).replace("\\\\", "\\"))
+            if path not in libraries:
+                libraries.append(path)
+    return libraries
+
+
 def acc_bin():
-    """返回找到了的 ACC 可执行目录，找不到返回 None。"""
+    """返回 ACC 的 Win64 目录，找不到返回 None。
+
+    先试写死的常见路径（本机的情况），再读 Steam 库配置——
+    别人的游戏装在自定义库时也能找到。
+    """
     for text in ACC_CANDIDATES:
         path = Path(text)
         if (path / "AC2-Win64-Shipping.exe").exists():
             return path
-    return None
+
+    now = time.monotonic()
+    if now - _ACC_CACHE["at"] < 10.0:
+        return _ACC_CACHE["path"]
+
+    found = None
+    for library in _steam_libraries():
+        candidate = library / _ACC_RELATIVE
+        if (candidate / "AC2-Win64-Shipping.exe").exists():
+            found = candidate
+            break
+    _ACC_CACHE["at"] = now
+    _ACC_CACHE["path"] = found
+    return found
 
 
 def acc_running():

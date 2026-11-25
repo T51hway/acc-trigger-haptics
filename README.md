@@ -110,3 +110,9 @@
 python src/main.py      # 命令行版
 python src/panel.py     # 图形面板
 ```
+
+---
+
+## 许可证
+
+MIT，见 `LICENSE`。
