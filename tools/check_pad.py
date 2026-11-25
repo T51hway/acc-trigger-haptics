@@ -382,25 +382,6 @@ class HIDD_ATTRIBUTES(ctypes.Structure):
                 ("VersionNumber", ctypes.c_ushort)]
 
 
-class HIDP_CAPS(ctypes.Structure):
-    _fields_ = [("Usage", ctypes.c_ushort),
-                ("UsagePage", ctypes.c_ushort),
-                ("InputReportByteLength", ctypes.c_ushort),
-                ("OutputReportByteLength", ctypes.c_ushort),
-                ("FeatureReportByteLength", ctypes.c_ushort),
-                ("Reserved", ctypes.c_ushort * 17),
-                ("NumberLinkCollectionNodes", ctypes.c_ushort),
-                ("NumberInputButtonCaps", ctypes.c_ushort),
-                ("NumberInputValueCaps", ctypes.c_ushort),
-                ("NumberInputDataIndices", ctypes.c_ushort),
-                ("NumberOutputButtonCaps", ctypes.c_ushort),
-                ("NumberOutputValueCaps", ctypes.c_ushort),
-                ("NumberOutputDataIndices", ctypes.c_ushort),
-                ("NumberFeatureButtonCaps", ctypes.c_ushort),
-                ("NumberFeatureValueCaps", ctypes.c_ushort),
-                ("NumberFeatureDataIndices", ctypes.c_ushort)]
-
-
 def hid_candidates():
     """列出所有微软（VID 045E）的 HID 接口路径。"""
     setupapi = ctypes.WinDLL("setupapi", use_last_error=True)
@@ -462,24 +443,6 @@ def hid_candidates():
 
     setupapi.SetupDiDestroyDeviceInfoList(ctypes.c_void_p(devinfo))
     return out
-
-
-def hid_output_ok(hid, handle):
-    """这个接口能不能收 9 字节的输出报文。"""
-    preparsed = ctypes.c_void_p()
-    hid.HidD_GetPreparsedData.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_void_p)]
-    if not hid.HidD_GetPreparsedData(handle, ctypes.byref(preparsed)):
-        return None
-    try:
-        caps = HIDP_CAPS()
-        hid.HidP_GetCaps.argtypes = [ctypes.c_void_p, ctypes.POINTER(HIDP_CAPS)]
-        hid.HidP_GetCaps.restype = ctypes.c_long
-        if hid.HidP_GetCaps(preparsed, ctypes.byref(caps)) < 0:
-            return None
-        return caps
-    finally:
-        hid.HidD_FreePreparsedData.argtypes = [ctypes.c_void_p]
-        hid.HidD_FreePreparsedData(preparsed)
 
 
 class HidChannel:
@@ -623,192 +586,6 @@ def probe_xinput(slot):
     return lib, (slot, wired), None
 
 
-def demo_compare(lib, info, wgi):
-    """同一个马达、同样强度、各震 3 秒，只有接口不同。用来判断手感是不是错觉。"""
-    print("=" * 62)
-    print("长震对照：同一个马达（左握把），各震 3 秒，中间停 2 秒")
-    print("  把左手搭在手柄左侧，或者干脆放在桌面上——桌面能听出嗡嗡声")
-    print("=" * 62)
-    print()
-
-    print("第 1 次：用 XInput（老接口）…… 现在开始")
-    xi = XInputChannel(lib, info[0])
-    xi.open()
-    try:
-        xi.run_motors(left_grip=1.0)
-        time.sleep(3.0)
-        xi.run_motors()
-    finally:
-        xi.close()
-    print("        ……停")
-    time.sleep(2.0)
-
-    print("第 2 次：用 WGI（新接口）…… 现在开始")
-    wgi.run_motors(left_grip=1.0)
-    time.sleep(3.0)
-    wgi.run_motors()
-    print("        ……停")
-    print()
-    print("哪一次有感觉？第 1 次（XInput）还是第 2 次（WGI）？")
-
-
-def hold_sequence(driver, total):
-    """持续写入测试：分段震，用来看游戏运行时我们的指令会不会被抢走/打断。
-
-    每段都是 50Hz 连续写，因为真实使用时就是这么写的。
-    """
-    seg = max(6.0, total / 3.0)
-    print("=" * 62)
-    print("持续写入测试（约 %.0f 秒，分三段）" % (seg * 3))
-    print("=" * 62)
-    print()
-    print("10 秒后开始。现在切到 ACC，把车开起来。")
-    for n in range(10, 0, -1):
-        print("    %2d" % n, end="\r")
-        sys.stdout.flush()
-        time.sleep(1.0)
-    print("                    ")
-
-    phases = [
-        ("只震两个扳机（握把写 0）", dict(left_trigger=1.0, right_trigger=1.0)),
-        ("只震左握把（扳机写 0）", dict(left_grip=1.0)),
-        ("四个全开", dict(left_grip=1.0, right_grip=1.0,
-                          left_trigger=1.0, right_trigger=1.0)),
-    ]
-
-    try:
-        for i, (label, kw) in enumerate(phases, 1):
-            print()
-            print("第 %d/3 段：%s —— 持续 %.0f 秒" % (i, label, seg))
-            deadline = time.time() + seg
-            while time.time() < deadline:
-                driver.run_motors(**kw)
-                time.sleep(0.02)          # 约 50Hz
-            driver.run_motors()
-            print("        结束，停 1 秒")
-            time.sleep(1.0)
-    finally:
-        driver.run_motors()
-        print()
-        print("全部结束。")
-
-
-def ab_compare(driver, seconds=5.0):
-    """对比两种发送方式，同一个马达、同样满值，只有写法不同。
-
-    A：走 run_motors 的限速逻辑（值不变就不发）
-    B：绕过限速，每 20ms 硬发一次（旧行为）
-    """
-    if not hasattr(driver, "_send"):
-        print("这个通道不支持对比（需要 HID 通道）。")
-        return
-
-    print("=" * 62)
-    print("发送方式对比：同一个马达（左握把），同样满值 100")
-    print("  A 段 = 值不变就不重复发（新逻辑）")
-    print("  B 段 = 每 20 毫秒硬发一次（旧逻辑）")
-    print("  每段 %.0f 秒，中间停 2 秒" % seconds)
-    print("=" * 62)
-    print()
-    print("3 秒后开始，把手柄拿在左手上。")
-    for n in (3, 2, 1):
-        print("    %d" % n, end="\r")
-        sys.stdout.flush()
-        time.sleep(1.0)
-    print("                    ")
-
-    try:
-        print()
-        print(">>> A 段 开始")
-        sys.stdout.flush()
-        end = time.time() + seconds
-        asked = 0
-        while time.time() < end:
-            driver.run_motors(left_grip=1.0)
-            asked += 1
-            time.sleep(0.02)
-        driver.run_motors()
-        print("    A 段结束（请求了 %d 次，实际合并后只发了几次）" % asked)
-        time.sleep(2.0)
-
-        print()
-        print(">>> B 段 开始")
-        sys.stdout.flush()
-        end = time.time() + seconds
-        sent = 0
-        while time.time() < end:
-            driver._send(1.0, 0.0, 0.0, 0.0)
-            sent += 1
-            time.sleep(0.02)
-        driver._send(0.0, 0.0, 0.0, 0.0)
-        print("    B 段结束（硬发了 %d 次）" % sent)
-    finally:
-        try:
-            driver._send(0.0, 0.0, 0.0, 0.0)
-        except Exception:
-            pass
-
-    print()
-    print("哪一段更稳、更猛？A 还是 B？")
-
-
-def mask_test(driver):
-    """测试报文的"使能掩码"能不能只驱动扳机、完全不碰握把。
-
-    如果能，那就没必要整体接管四个马达 —— ACC 的握把震动可以留着，
-    两边各管各的，冲突根本不存在。
-    """
-    if not hasattr(driver, "_send"):
-        print("这个通道不支持掩码测试（需要 HID 通道）。")
-        return
-
-    print("=" * 62)
-    print("掩码测试：能不能只震动扳机、不碰握把")
-    print("=" * 62)
-    print()
-    print("前提：ACC 开着、在赛道上、游戏内震动是【打开】的状态。")
-    print("每段 6 秒，中间停 2 秒。")
-    print()
-    print("3 秒后开始。")
-    for n in (3, 2, 1):
-        print("    %d" % n, end="\r")
-        sys.stdout.flush()
-        time.sleep(1.0)
-    print("                    ")
-
-    try:
-        print()
-        print(">>> 第 1 段：掩码 0x0F（四个全开），只给扳机 100")
-        print("    预期：扳机震，握把被清零 → ACC 的路面震动**消失**")
-        sys.stdout.flush()
-        end = time.time() + 6.0
-        while time.time() < end:
-            driver._send(0.0, 0.0, 1.0, 1.0, mask=0x0F)
-            time.sleep(0.05)
-        driver._send(0.0, 0.0, 0.0, 0.0)
-        time.sleep(2.0)
-
-        print()
-        print(">>> 第 2 段：掩码 0x0C（只开两个扳机），只给扳机 100")
-        print("    要观察：扳机震的同时，握把的 ACC 路面震动**还在不在**")
-        print("    在  → 掩码能隔离，方案成立，不用关游戏内震动")
-        print("    没了→ 掩码不能隔离，那就得靠关掉 ACC 的震动")
-        sys.stdout.flush()
-        end = time.time() + 6.0
-        while time.time() < end:
-            driver._send(0.0, 0.0, 1.0, 1.0, mask=0x0C)
-            time.sleep(0.05)
-        driver._send(0.0, 0.0, 0.0, 0.0, mask=0x0C)
-    finally:
-        try:
-            driver._send(0.0, 0.0, 0.0, 0.0)
-        except Exception:
-            pass
-
-    print()
-    print("第 2 段的时候，握把还有没有 ACC 的震动？")
-
-
 def boost_priority():
     """把自己提到「高于正常」优先级。
 
@@ -918,18 +695,8 @@ def main():
     ap.add_argument("--pad", type=int, default=0, help="手柄序号，默认 0")
     ap.add_argument("--wait", type=float, default=20.0,
                     help="等手柄被激活的秒数，默认 20（期间按一下手柄即可）")
-    ap.add_argument("--compare", action="store_true",
-                    help="四步走完后，再用 XInput 震两下握把做对照")
-    ap.add_argument("--demo", action="store_true",
-                    help="跳过四步，只做长震对照（XInput 3 秒 / WGI 3 秒）")
-    ap.add_argument("--hold", type=float, default=0, metavar="秒",
-                    help="持续写入测试：分三段连续震，用来看游戏运行时会不会抢")
-    ap.add_argument("--ab", action="store_true",
-                    help="对比两种发送方式的震感（值不变不重发 vs 每 20ms 硬发）")
-    ap.add_argument("--mask", action="store_true",
-                    help="测试使能掩码能不能只驱动扳机、不碰握把")
     ap.add_argument("--rate", action="store_true",
-                    help="发送频率测试：20 / 60 / 120 Hz 各 6 秒，看断续")
+                    help="发送频率测试：60 / 120 / 200 Hz 各 6 秒，看断续")
     args = ap.parse_args()
 
     try:
@@ -1014,42 +781,10 @@ def main():
         sys.exit(1)
     print()
 
-    # --demo：只做长震对照，跳过四步（用来确认震感，不是错觉）
-    if args.demo and info is not None and driver.name == "WGI":
-        try:
-            demo_compare(lib, info, driver)
-        finally:
-            driver.close()
-        return
-
     # --rate：发送频率测试
     if args.rate:
         try:
             rate_test(driver)
-        finally:
-            driver.close()
-        return
-
-    # --mask：测试使能掩码能否只驱动扳机
-    if args.mask:
-        try:
-            mask_test(driver)
-        finally:
-            driver.close()
-        return
-
-    # --ab：对比两种发送方式的震感
-    if args.ab:
-        try:
-            ab_compare(driver)
-        finally:
-            driver.close()
-        return
-
-    # --hold：持续写入，验证游戏运行时会不会被抢
-    if args.hold:
-        try:
-            hold_sequence(driver, args.hold)
         finally:
             driver.close()
         return
@@ -1061,29 +796,6 @@ def main():
         print("被中断，先清零。")
     finally:
         driver.close()
-
-    # 对照：同样的马达，换 XInput 再震一遍，用来判断"是路线问题还是硬件问题"
-    if args.compare and info is not None and driver.name != "XInput":
-        print()
-        print("=" * 62)
-        print("对照测试：接下来用 XInput 再震两下握把")
-        print("  XInput 是老接口，只能握把，但它是直通驱动的")
-        print("  如果这两下你能感觉到、而刚才 WGI 那四下感觉不到，")
-        print("  就说明马达没坏，是 WGI 这条路的指令没送到硬件。")
-        print("=" * 62)
-        xi = XInputChannel(lib, info[0])
-        xi.open()
-        try:
-            for label, kw in (("左握把", dict(left_grip=1.0)),
-                              ("右握把", dict(right_grip=1.0))):
-                print()
-                print("  XInput → %s，1 秒" % label)
-                xi.run_motors(**kw)
-                time.sleep(1.0)
-                xi.run_motors()
-                time.sleep(0.5)
-        finally:
-            xi.close()
 
     print()
     print("=" * 62)
