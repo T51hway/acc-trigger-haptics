@@ -110,5 +110,3 @@
 python src/main.py      # 命令行版
 python src/panel.py     # 图形面板
 ```
-
-开发记录和决策过程在 `docs/交接.md`、`设计说明.md`。
