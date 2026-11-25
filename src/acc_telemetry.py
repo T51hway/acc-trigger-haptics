@@ -59,6 +59,8 @@ import ctypes.wintypes as wintypes
 import struct
 import sys
 import time
+
+from i18n import t
 from dataclasses import dataclass
 
 MAPPING_NAME = "Local\\acpmf_physics"
@@ -242,12 +244,10 @@ def _parse(raw, received_at):
 
 def _explain_open_error(code):
     if code == 2:
-        return ("找不到 Local\\acpmf_physics：ACC 没在运行，"
-                "或者还停在主菜单、没进赛道。")
+        return t("tel_open_missing")
     if code == 5:
-        return ("共享内存找到了，但拒绝访问：ACC 可能以管理员身份运行，"
-                "本程序也要用管理员身份打开。")
-    return "打开共享内存失败，系统错误码 %d。" % code
+        return t("tel_open_denied")
+    return t("tel_open_fail", code)
 
 
 class AccTelemetry:
@@ -278,7 +278,7 @@ class AccTelemetry:
         self._last_change_at = 0.0
         self._need_fresh = False      # 超时断开过：重连后要看到包号推进才交数据
         self._state = None            # None / "live" / "stale" / "down"
-        self.last_error = "还没连过。"
+        self.last_error = t("tel_never")
 
     # ── 对外接口 ──────────────────────────────────────────────────
     @property
@@ -301,8 +301,7 @@ class AccTelemetry:
         if not addr:
             error = ctypes.get_last_error()
             _k32.CloseHandle(handle)
-            self.last_error = ("共享内存能打开，但映射进本进程失败"
-                               "（错误码 %d），通常还是权限问题。" % error)
+            self.last_error = t("tel_map_fail", error)
             self._note("down")
             return False
 
@@ -348,8 +347,7 @@ class AccTelemetry:
 
         idle = snap.received_at - self._last_change_at
         if idle > self._close_after:
-            self.last_error = ("ACC 遥测长时间没有更新：可能退出了、暂停了，"
-                               "或者还停在菜单里。")
+            self.last_error = t("tel_stale_long")
             self._need_fresh = True
             self.detach()
             self._note("down")
@@ -410,12 +408,11 @@ class AccTelemetry:
         previous, self._state = self._state, state
         if state == "live":
             if previous == "stale":
-                self._say("ACC 遥测恢复了。")
+                self._say(t("tel_recovered"))
             else:
-                self._say("已连上 ACC 遥测（Local\\acpmf_physics）。")
+                self._say(t("tel_connected"))
         elif state == "stale":
-            self._say("ACC 遥测超过 %.1f 秒没有更新，先按没有数据处理。"
-                      % self._stale_after)
+            self._say(t("tel_stale_short", self._stale_after))
         elif state == "down":
             self._say(self.last_error)
 
@@ -423,7 +420,7 @@ class AccTelemetry:
         if self._log is None:
             return
         try:
-            self._log("[遥测 %s] %s" % (time.strftime("%H:%M:%S"), text))
+            self._log(t("log_prefix_telemetry", time.strftime("%H:%M:%S"), text))
         except Exception:
             pass
 

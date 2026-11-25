@@ -1,118 +1,126 @@
 # ACC Trigger Haptics
 
-> 非官方个人项目，与 Kunos Simulazioni / 505 Games 无关。
+English | [简体中文](README.zh-CN.md)
 
-给《神力科莎：竞技版》（ACC）补上 Xbox 手柄的**扳机震动**。ACC 原生只震两个握把，
-这个程序读游戏的遥测，把四个马达都用起来：握把给路感，扳机给刹车、油门和轮胎极限。
+> Unofficial personal project. Not affiliated with Kunos Simulazioni or 505 Games.
 
----
-
-## 快速开始（约三分钟）
-
-前提：手柄用蓝牙连上电脑，并在 Steam 里关掉 **Steam 输入**。
-
-1. **装接管层**（只需一次）：双击 `开启接管.bat`。
-   ACC 大更新后如果扳机又变断续，重跑一次即可。
-2. **进赛道**：打开 ACC，进入实际驾驶（不是菜单、不是回放）。
-3. **启动震动**：双击 `ACC Trigger Haptics.exe`，点「开始震动」。
-4. **看四盏灯**：代理 DLL / 手柄 / ACC 遥测 / 震动 全绿，说明在正常工作。
-5. **调强度**：直接拖滑块，1 秒内生效，游戏不用重启。
+Adds Xbox controller **trigger haptics** to Assetto Corsa Competizione (ACC).
+ACC only rumbles the two grips; this program reads the game's telemetry and uses
+all four motors: grips for road feel, triggers for braking, throttle and tyre limits.
 
 ---
 
-## 四个马达分别管什么
+## Quick start (about 3 minutes)
 
-| 通道 | 反馈内容 |
+Before you start: connect the controller over Bluetooth and turn **Steam Input** off in Steam.
+
+1. Run **`ACC Trigger Haptics.exe`**.
+2. Click **Install takeover** — this copies a small proxy DLL into the ACC folder,
+   so the game can no longer overwrite the trigger rumble (one time only).
+3. Get on track in ACC and click **Start haptics**.
+4. All four lamps green (Proxy DLL / Controller / ACC telemetry / Haptics) means it is working.
+5. Drag the sliders to tune; changes apply within a second, no restart needed.
+
+Running from source instead? The two helper scripts `开启接管.bat` and `恢复原生.bat`
+do the same install/restore job.
+
+---
+
+## What each motor does
+
+| Motor | Feedback |
 | --- | --- |
-| 左扳机 | 刹车踩多深；前轮抱死、ABS 介入时的急促「嗒嗒」 |
-| 右扳机 | 油门踩多深；后轮打滑；推头（前轮比后轮多滑） |
-| 左握把 | 左侧路面纹理 |
-| 右握把 | 右侧路面纹理 |
+| Left trigger | Brake pressure; short "tick-tick" when a front wheel locks or ABS kicks in |
+| Right trigger | Throttle pressure; rear wheelspin; understeer (front slipping more than rear) |
+| Left grip | Left-side road texture |
+| Right grip | Right-side road texture |
 
-停车时刹车 / 油门那一层会自动关掉（车速 5 km/h 以下），开起来才恢复。
+The brake/throttle floor fades out below 5 km/h, so pressing the pedals at a standstill stays quiet.
 
 ---
 
-## 调手感
+## Tuning
 
-面板上五个滑块，拖动即保存：
+Five sliders in the panel, saved automatically:
 
-| 滑块 | 作用 | 代码默认 |
+| Slider | What it does | Code default |
 | --- | --- | --- |
-| 路面纹理 | 握把的路面粗糙感 | 0.21 |
-| 刹车底层 | 左扳机跟着刹车深度震 | 0.20 |
-| 油门底层 | 右扳机跟着油门深度震 | 0.15 |
-| 事件强度 | 锁死 / ABS / 后轮打滑的脉冲强度 | 0.75 |
-| 推头强度 | 推头时右扳机的强度，0 = 关掉 | 1.00 |
+| Road texture | Grip rumble from the road surface | 0.21 |
+| Brake floor | Left trigger follows brake pressure | 0.20 |
+| Throttle floor | Right trigger follows throttle | 0.15 |
+| Event strength | Pulse strength for lock / ABS / wheelspin | 0.75 |
+| Understeer gain | Right trigger strength when the front pushes; 0 = off | 1.00 |
 
-不想用面板，也可以双击 `调手感.bat` 直接改 `手感设置.toml`，保存后 1 秒内生效。
-**只改等号 `=` 右边的数字**，`#` 后面是说明文字，改了不会生效。
-
----
-
-## 控制面板
-
-- 四盏状态灯：代理 DLL / 手柄 / ACC 遥测 / 震动
-- 五个滑块，拖动即保存
-- 开始震动 / 停止震动
-- 安装接管 / 恢复原生（ACC 运行时会提示先退出）
-- 版本号在窗口右下角
-
-关窗口会先停止震动再退出。**正常用法是点 ×**，用任务管理器强杀可能留下马达在震。
-
-出错时看仓库根目录的 `panel.log`。
+You can also edit `手感设置.toml` directly (the `调手感.bat` helper opens it).
+Only change the numbers on the right-hand side of `=`.
 
 ---
 
-## 环境要求
+## Panel
+
+- Four status lamps: proxy DLL / controller / ACC telemetry / haptics
+- Five sliders, saved as you drag
+- Start / stop haptics
+- Install / restore the takeover DLL (refuses while ACC is running)
+- Language switch (English / 中文) at the bottom left
+- Version number at the bottom right
+
+Closing the window stops the haptics and zeroes the motors first.
+Killing the process from Task Manager may leave the motors running — close it with the X.
+
+Errors are written to `panel.log` next to the executable.
+
+---
+
+## Requirements
 
 - Windows 10 / 11
-- Xbox One / Xbox Series 手柄（Xbox 360 没有扳机马达，不适用）
-- **蓝牙连接**：已实测可用；有线连接和官方无线适配器未测
-- **必须关闭 Steam 输入**，否则扳机指令会被截走
-- **必须装接管层**（`开启接管.bat`）。只关掉游戏内的震动选项不够
+- Xbox One or Xbox Series controller (Xbox 360 has no trigger motors)
+- **Bluetooth connection** — tested; wired connection untested
+- **Steam Input must be off**, otherwise it swallows the trigger commands
+- **The takeover DLL must be installed**; disabling in-game vibration alone is not enough
 
-用打包好的 exe 不需要安装 Python。
-
----
-
-## 常见问题
-
-**扳机完全不震**
-先看面板上「代理 DLL」那盏灯是不是绿色。没装的话，ACC 会每帧把扳机震动清零。
-再确认 Steam 输入已经关闭。
-
-**以前能用，ACC 更新后变得断断续续**
-重跑一次 `开启接管.bat`。
-
-**想恢复 ACC 原生震动**
-面板上点「恢复原生」，或双击 `恢复原生.bat`。方向盘不受影响。
-
-**Steam 校验文件报警**
-接管层是一个新增文件，Steam 会报 1 个文件异常，属正常现象；
-删掉或改名就恢复，校验也不再报警。
+The packaged exe does not require Python.
 
 ---
 
-## 已知限制
+## FAQ
 
-- 后轮横滑（甩尾）没有专门感知，只认纵向空转
-- 长距离耐力、蓝牙断连重连没有现场验证
-- 有线连接、官方无线适配器未测
+**No trigger vibration at all**
+Check the "Proxy DLL" lamp first. Without it, ACC overwrites the trigger rumble every frame.
+Also make sure Steam Input is off.
+
+**It worked before, but became stuttery after an ACC update**
+Run the takeover install again (the update may have replaced the DLL).
+
+**How do I get ACC's native rumble back?**
+Click **Restore native** in the panel, or run `恢复原生.bat`. Wheels are unaffected.
+
+**Steam file verification complains**
+The takeover DLL is an added file, so Steam reports one unexpected file. That is expected;
+delete or rename it and the warning goes away.
 
 ---
 
-## 从源码运行（可选）
+## Known limitations
 
-需要 Python 3.11 以上；面板还需要带 tkinter 的完整 Python。
+- Rear-end slides (oversteer) are not detected as such; only longitudinal wheelspin is
+- Long sessions, and Bluetooth reconnects, have not been endurance-tested
+- Wired connection and the official wireless adapter are untested
+
+---
+
+## Run from source (optional)
+
+Requires Python 3.11+; the panel also needs a full Python build with tkinter.
 
 ```
-python src/main.py      # 命令行版
-python src/panel.py     # 图形面板
+python src/main.py      # console version
+python src/panel.py     # graphical panel
 ```
 
 ---
 
-## 许可证
+## License
 
-MIT，见 `LICENSE`。
+MIT, see `LICENSE`.

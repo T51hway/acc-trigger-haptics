@@ -66,6 +66,8 @@ import threading
 import time
 import uuid
 
+from i18n import t
+
 # ── 协议常量 ────────────────────────────────────────────────────────
 REPORT_ID = 0x03
 MASK_ALL_MOTORS = 0x0F
@@ -361,7 +363,7 @@ class PadDriver:
         self._acquire_instance_lock()
         try:
             if not raise_process_priority():
-                self._say("优先级没能提升（不影响功能，但全屏游戏里可能更抖）。")
+                self._say(t("pad_priority"))
 
             if wait and wait > 0:
                 deadline = time.perf_counter() + wait
@@ -370,14 +372,14 @@ class PadDriver:
                     if time.perf_counter() >= deadline:
                         break
                     if not announced:
-                        self._say("没看到手柄。按一下手柄让它连上，我在这里等……")
+                        self._say(t("pad_wait_device"))
                         announced = True
                     time.sleep(0.5)
             else:
                 self._connect()
 
             if self._handle is None:
-                self._say("暂时没有手柄，后台每 %.0f 秒重试一次。" % RECONNECT_INTERVAL)
+                self._say(t("pad_no_device", RECONNECT_INTERVAL))
 
             thread = threading.Thread(target=self._writer_loop,
                                       name="pad-writer", daemon=True)
@@ -417,7 +419,7 @@ class PadDriver:
         if thread is not None and thread is not threading.current_thread():
             thread.join(STOP_JOIN_TIMEOUT)
             if thread.is_alive():
-                self._say("写入线程没有按时停下，直接收尾。")
+                self._say(t("pad_stop_slow"))
 
         # 不管线程是怎么没的，最后自己清一次零。
         if self._handle is not None:
@@ -487,8 +489,7 @@ class PadDriver:
                 now = time.perf_counter()
                 if now >= self._next_error_report:
                     self._next_error_report = now + 5.0
-                    self._say("写入循环出错（%s: %s），继续重试。"
-                              % (type(exc).__name__, exc))
+                    self._say(t("pad_loop_error", type(exc).__name__, exc))
 
             next_tick += self._interval
             now = time.perf_counter()
@@ -509,7 +510,7 @@ class PadDriver:
         if levels == (0, 0, 0, 0) and self._last_sent == (0, 0, 0, 0):
             return
         if not self._write_levels(levels):
-            self._drop_link("写入失败，系统错误码 %d" % ctypes.get_last_error())
+            self._drop_link(t("pad_write_fail", ctypes.get_last_error()))
             return
         self._last_sent = levels
         self._last_send_at = time.perf_counter()
@@ -520,7 +521,7 @@ class PadDriver:
         try:
             candidates = _enumerate_hid_paths()
         except Exception as exc:
-            self._say("枚举 HID 设备时出错：%s" % exc)
+            self._say(t("pad_enum_error", exc))
             return False
 
         for path, product_id in candidates:
@@ -537,8 +538,7 @@ class PadDriver:
                 self._path = path
                 self._product_id = product_id
                 self._last_sent = (0, 0, 0, 0)
-                self._say("已连上手柄（PID %04X，通道：蓝牙 HID 报文 0x03）"
-                          % product_id)
+                self._say(t("pad_connected", product_id))
                 return True
             _close_handle(handle)
             self._handle = None
@@ -549,7 +549,7 @@ class PadDriver:
         self._last_sent = None
         if handle is not None:
             _close_handle(handle)
-        self._say("%s。每 %.0f 秒重试一次。" % (reason, RECONNECT_INTERVAL))
+        self._say(t("pad_dropped", reason, RECONNECT_INTERVAL))
 
     def _write_levels(self, levels):
         packet = _packet(levels)
@@ -566,13 +566,10 @@ class PadDriver:
         ctypes.set_last_error(0)
         handle = _k32.CreateMutexW(None, False, MUTEX_NAME)
         if not handle or handle == INVALID_HANDLE_VALUE:
-            raise PadError("创建单实例锁失败（错误码 %d）。" % ctypes.get_last_error())
+            raise PadError(t("pad_lock_fail", ctypes.get_last_error()))
         if ctypes.get_last_error() == ERROR_ALREADY_EXISTS:
             _close_handle(handle)
-            raise PadBusy(
-                "已经有一个马达驱动在运行了。\n"
-                "两个程序同时写手柄会互相打断，所以这里不重复启动。\n"
-                "请先关掉那个窗口，再试一次。")
+            raise PadBusy(t("pad_busy"))
         self._mutex = handle
 
     def _release_instance_lock(self):
@@ -625,7 +622,7 @@ class PadDriver:
         if self._log is None:
             return
         try:
-            self._log("[马达 %s] %s" % (time.strftime("%H:%M:%S"), text))
+            self._log(t("log_prefix_pad", time.strftime("%H:%M:%S"), text))
         except Exception:
             pass
 

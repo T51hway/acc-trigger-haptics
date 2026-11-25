@@ -71,6 +71,7 @@ from pathlib import Path
 from typing import NamedTuple
 
 from acc_telemetry import Snapshot
+from i18n import t
 
 # ── 参数初值（设计说明.md 第六节）────────────────────────────────
 # 这些是"从数据分布推出来的候选值"，不是手感验证过的值。
@@ -190,12 +191,12 @@ def load_tuning(path=None):
     except FileNotFoundError:
         return tuning
     except Exception as exc:
-        print("[手感] 读取 %s 失败：%s（先用默认值）" % (path.name, exc))
+        print(t("cfg_read_fail", path.name, exc))
         return tuning
 
     for key in data:
         if key not in TUNING_RANGES:
-            print("[手感] 不认识的设置项 %s，已忽略。" % key)
+            print(t("cfg_unknown_key", key))
 
     for key, (low, high) in TUNING_RANGES.items():
         if key not in data:
@@ -203,15 +204,14 @@ def load_tuning(path=None):
         try:
             value = float(data[key])
         except (TypeError, ValueError):
-            print("[手感] %s 不是数字，忽略。" % key)
+            print(t("cfg_not_number", key))
             continue
         if not math.isfinite(value):
-            print("[手感] %s 不是有效数字，忽略。" % key)
+            print(t("cfg_not_finite", key))
             continue
         clamped = max(low, min(high, value))
         if clamped != value:
-            print("[手感] %s = %.2f 超出 %.2f~%.2f，按 %.2f 处理。"
-                  % (key, value, low, high, clamped))
+            print(t("cfg_out_of_range", key, value, low, high, clamped))
         tuning[key] = clamped
     return tuning
 

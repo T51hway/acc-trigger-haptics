@@ -30,6 +30,7 @@ import time
 
 from acc_telemetry import AccTelemetry
 from haptics_engine import HapticsEngine, config_path, load_tuning
+from i18n import set_language, system_language, t
 from pad_driver import PadBusy, PadDriver, PadError
 from version import VERSION
 
@@ -44,40 +45,38 @@ def _file_mtime(path):
 def _source_names(trace, key):
     items = trace.get(key) or []
     if not items:
-        return "-"
+        return t("cli_none")
     return "+".join(name for name, _amplitude in items)
 
 
 def _tuning_text(tuning):
-    return ("路面 %.2f ｜ 刹车底层 %.2f ｜ 油门底层 %.2f ｜ 事件 %.2f ｜ 推头 %.2f"
-            % (tuning["grip_road"], tuning["trigger_floor"],
-               tuning["throttle_floor"], tuning["trigger_event"],
-               tuning["understeer_gain"]))
+    return t("cfg_tuning_text", tuning["grip_road"], tuning["trigger_floor"],
+             tuning["throttle_floor"], tuning["trigger_event"],
+             tuning["understeer_gain"])
 
 
 def _status_line(snap, motors, engine):
     trace = engine.last_trace
     metrics = engine.last_metrics or {}
     abs_on = 1 if (snap.abs_level > 0.05 or abs(snap.abs_vibrations) > 0.05) else 0
-    return ("[%07d] %6.1f km/h  档 %-2s  刹车 %.2f  油门 %.2f  ABS %d  |  "
-            "扳机 %3.0f/%3.0f  握把峰 %3.0f/%3.0f  |  左 %s ｜ 右 %s"
-            % (snap.packet_id, snap.speed_kmh, snap.gear_label, snap.brake,
-               snap.throttle, abs_on,
-               motors.left_trigger * 100.0, motors.right_trigger * 100.0,
-               metrics.get("grip_peak_left", 0.0) * 100.0,
-               metrics.get("grip_peak_right", 0.0) * 100.0,
-               _source_names(trace, "left_trigger"),
-               _source_names(trace, "right_trigger")))
+    return t("cli_status", snap.packet_id, snap.speed_kmh, snap.gear_label,
+             snap.brake, snap.throttle, abs_on,
+             motors.left_trigger * 100.0, motors.right_trigger * 100.0,
+             metrics.get("grip_peak_left", 0.0) * 100.0,
+             metrics.get("grip_peak_right", 0.0) * 100.0,
+             _source_names(trace, "left_trigger"),
+             _source_names(trace, "right_trigger"))
 
 
 def main():
-    parser = argparse.ArgumentParser(description="ACC Trigger Haptics · 主循环")
+    set_language(system_language())
+    parser = argparse.ArgumentParser(description=t("cli_description"))
     parser.add_argument("--hz", type=float, default=60.0,
-                        help="主循环频率，默认 60（和马达写入频率一致）")
+                        help=t("cli_hz_help"))
     parser.add_argument("--status", action="store_true",
-                        help="每秒打印一行状态（联调时用）")
+                        help=t("cli_status_help"))
     parser.add_argument("--seconds", type=float, default=0.0,
-                        help="跑满这么多秒自动停（自测用，默认 0 = 一直跑）")
+                        help=t("cli_seconds_help"))
     args = parser.parse_args()
 
     try:
@@ -89,11 +88,11 @@ def main():
     print("=" * 62)
     print("ACC Trigger Haptics · v%s" % VERSION)
     print("=" * 62)
-    print("开始前确认：")
-    print("  1. 已经运行过 开启接管.bat，否则 ACC 会每帧冲掉扳机")
-    print("  2. Steam 输入已关闭")
-    print("  3. 手柄蓝牙已连接，ACC 已进入赛道")
-    print("按 Ctrl+C 退出，退出时四个马达一定会清零。")
+    print(t("cli_preflight"))
+    print(t("cli_preflight_1"))
+    print(t("cli_preflight_2"))
+    print(t("cli_preflight_3"))
+    print(t("cli_ctrl_c"))
     print()
 
     telemetry = AccTelemetry()
@@ -101,9 +100,9 @@ def main():
     tuning = load_tuning(tuning_file)
     engine = HapticsEngine(tuning)
     if tuning_file.exists():
-        print("手感设置：%s" % tuning_file.name)
+        print(t("cli_settings", tuning_file.name))
     else:
-        print("手感设置：默认值（双击 调手感.bat 可以改）")
+        print(t("cli_settings_default"))
     print("           %s" % _tuning_text(engine.tuning))
     print()
 
@@ -115,10 +114,10 @@ def main():
         print(exc)
         return 1
     except PadError as exc:
-        print("马达驱动启动失败：%s" % exc)
+        print(t("cli_driver_fail", exc))
         return 1
     except Exception as exc:
-        print("马达驱动启动失败：%s: %s" % (type(exc).__name__, exc))
+        print(t("cli_driver_fail_detail", type(exc).__name__, exc))
         return 1
 
     interval = 1.0 / max(args.hz, 1.0)
@@ -141,7 +140,7 @@ def main():
                 if mtime is not None and mtime != config_mtime:
                     config_mtime = mtime
                     engine.set_tuning(load_tuning(tuning_file))
-                    print("[手感] 已更新：%s" % _tuning_text(engine.tuning),
+                    print(t("cfg_updated", _tuning_text(engine.tuning)),
                           flush=True)
 
             if snap is None:
@@ -160,7 +159,7 @@ def main():
 
             if args.seconds and now - started >= args.seconds:
                 print()
-                print("自测时间到，准备退出。")
+                print(t("cli_selftest_done"))
                 break
 
             next_tick += interval
@@ -171,17 +170,17 @@ def main():
                 next_tick = time.perf_counter()   # 落后了就不追帧
     except KeyboardInterrupt:
         print()
-        print("收到 Ctrl+C，正在清零……")
+        print(t("cli_interrupted"))
     except Exception as exc:
         print()
-        print("主循环出错：%s: %s" % (type(exc).__name__, exc))
-        print("（把上面这行发给开发者）")
+        print(t("cli_loop_error", type(exc).__name__, exc))
+        print(t("cli_report"))
         exit_code = 1
     finally:
         driver.stop()
         telemetry.close()
 
-    print("已退出。")
+    print(t("cli_exit"))
     return exit_code
 
 

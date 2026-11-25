@@ -20,6 +20,7 @@
 """
 
 import ctypes
+import json
 import logging
 import os
 import re
@@ -43,6 +44,9 @@ from haptics_engine import (                               # noqa: E402
 )
 from pad_driver import PadBusy, PadDriver                  # noqa: E402
 from version import VERSION                                # noqa: E402
+from i18n import (                                          # noqa: E402
+    get_language, set_language, system_language, t,
+)
 
 
 def _app_dir():
@@ -61,6 +65,7 @@ def _bundle_dir():
 APP_DIR = _app_dir()
 BUNDLE_DIR = _bundle_dir()
 LOG_PATH = APP_DIR / "panel.log"
+SETTINGS_PATH = APP_DIR / "panel-settings.json"
 PROXY_SOURCE = BUNDLE_DIR / "tools" / "xinput_proxy" / "xinput1_3.dll"
 PROXY_LOCAL = APP_DIR / "tools" / "xinput_proxy" / "xinput1_3.dll"   # 兜底
 
@@ -78,14 +83,30 @@ _ACC_RELATIVE = Path("steamapps") / "common" / "Assetto Corsa Competizione" \
     / "AC2" / "Binaries" / "Win64"
 _ACC_CACHE = {"at": 0.0, "path": None}
 
-# 滑块：(键, 显示名, 上限)。上限只是"拖到头"的位置，不改变程序里的合法范围。
+# 滑块：(键, 文案键, 上限)。上限只是"拖到头"的位置，不改变程序里的合法范围。
 SLIDERS = (
-    ("grip_road", "路面纹理", 0.80),
-    ("trigger_floor", "刹车底层", 0.50),
-    ("throttle_floor", "油门底层", 0.35),
-    ("trigger_event", "事件强度", 1.00),
-    ("understeer_gain", "推头强度", 1.50),
+    ("grip_road", "sl_road", 0.80),
+    ("trigger_floor", "sl_brake", 0.50),
+    ("throttle_floor", "sl_throttle", 0.35),
+    ("trigger_event", "sl_event", 1.00),
+    ("understeer_gain", "sl_understeer", 1.50),
 )
+
+
+def load_settings():
+    try:
+        data = json.loads(SETTINGS_PATH.read_text(encoding="utf-8-sig"))
+    except Exception:
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def save_settings(data):
+    try:
+        SETTINGS_PATH.write_text(
+            json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    except Exception:
+        pass
 
 C_GREEN = "#2e7d32"
 C_RED = "#c62828"
@@ -255,7 +276,8 @@ class Runner(threading.Thread):
     def set_drive(self, wanted):
         with self._guard:
             self._want_drive = bool(wanted)
-            self._state["message"] = ("正在启动……" if wanted else "正在停止……")
+            self._state["message"] = (t("log_starting") if wanted
+                                      else t("log_stopping"))
 
     def shutdown(self):
         self._stop_event.set()
@@ -271,7 +293,7 @@ class Runner(threading.Thread):
         try:
             self._telemetry = AccTelemetry(log=self._log)
         except Exception as exc:
-            self._note("遥测打不开：%s" % exc)
+            self._note(t("log_telemetry_open_fail", exc))
             return
 
         engine = HapticsEngine(load_tuning())
@@ -289,7 +311,7 @@ class Runner(threading.Thread):
             try:
                 snap = self._telemetry.latest()
             except Exception as exc:
-                self._note("读遥测出错：%s" % exc)
+                self._note(t("log_telemetry_error", exc))
                 snap = None
 
             if snap is None:
@@ -305,7 +327,7 @@ class Runner(threading.Thread):
                     try:
                         driver.set_vibration(*engine.update(snap, now=now))
                     except Exception as exc:
-                        self._note("主循环出错：%s" % exc)
+                        self._note(t("log_master_error", exc))
 
             with self._guard:
                 self._state["acc"] = snap is not None
@@ -319,7 +341,7 @@ class Runner(threading.Thread):
                 if mtime is not None and mtime != config_mtime:
                     config_mtime = mtime
                     engine.set_tuning(load_tuning(tuning_file))
-                    self._log("手感设置已重新读取")
+                    self._log(t("log_reloaded"))
 
             next_tick += interval
             delay = next_tick - time.perf_counter()
@@ -354,12 +376,12 @@ class Runner(threading.Thread):
             except Exception as exc:
                 with self._guard:
                     self._want_drive = False
-                self._note("马达驱动启动失败：%s" % exc)
+                self._note(t("log_driver_fail", exc))
                 return None
             with self._guard:
                 self._driver = new
             engine.reset()
-            self._note("震动已开始（手柄没连上时会每秒自动重连）")
+            self._note(t("log_drive_started"))
             return new
 
         if not wanted and driver is not None:
@@ -369,7 +391,7 @@ class Runner(threading.Thread):
                 driver.stop()
             except Exception:
                 pass
-            self._note("震动已停止，四个马达已清零")
+            self._note(t("log_drive_stopped"))
             return None
 
         return driver
@@ -392,11 +414,16 @@ class Panel:
         root.protocol("WM_DELETE_WINDOW", self.close)
 
         self._setup_log()
+
+        # 语言：上次的选择优先，没有就跟随 Windows 显示语言
+        settings = load_settings()
+        set_language(settings.get("language") or system_language())
+
         self._build()
 
         self.runner = Runner(self.log)
         self.runner.start()
-        self.log("面板已启动 v%s" % VERSION)
+        self.log(t("log_started", VERSION))
 
         self._tick()
 
@@ -434,9 +461,10 @@ class Panel:
 
         frame = ttk.Frame(self.root, padding=12)
         frame.grid(row=0, column=0, sticky="nsew")
+        self.frame = frame
 
         # 状态灯：2x2
-        lamps = ttk.LabelFrame(frame, text="状态", padding=8)
+        lamps = ttk.LabelFrame(frame, text=t("group_status"), padding=8)
         lamps.grid(row=0, column=0, columnspan=3, sticky="ew")
         self.lamps = {}
         for index, key in enumerate(("proxy", "pad", "acc", "drive")):
@@ -451,10 +479,10 @@ class Panel:
         tuning = load_tuning()
         self.vars = {}
         self.value_labels = {}
-        sliders = ttk.LabelFrame(frame, text="手感（拖动即保存）", padding=8)
+        sliders = ttk.LabelFrame(frame, text=t("group_tuning"), padding=8)
         sliders.grid(row=1, column=0, columnspan=3, sticky="ew", pady=(10, 0))
-        for row, (key, name, top) in enumerate(SLIDERS):
-            ttk.Label(sliders, text=name, width=9).grid(
+        for row, (key, label_key, top) in enumerate(SLIDERS):
+            ttk.Label(sliders, text=t(label_key), width=13).grid(
                 row=row, column=0, sticky="w", pady=3)
             var = tk.DoubleVar(value=float(tuning[key]))
             self.vars[key] = var
@@ -471,18 +499,22 @@ class Panel:
         # 按钮
         buttons = ttk.Frame(frame)
         buttons.grid(row=2, column=0, columnspan=3, sticky="ew", pady=(12, 0))
-        self.start_button = ttk.Button(buttons, text="开始震动", command=self._start)
+        self.start_button = ttk.Button(buttons, text=t("btn_start"),
+                                       command=self._start)
         self.start_button.grid(row=0, column=0, sticky="ew", padx=(0, 6))
-        self.stop_button = ttk.Button(buttons, text="停止震动", command=self._stop)
+        self.stop_button = ttk.Button(buttons, text=t("btn_stop"),
+                                      command=self._stop)
         self.stop_button.grid(row=0, column=1, sticky="ew", padx=(0, 6))
         buttons.columnconfigure(0, weight=1)
         buttons.columnconfigure(1, weight=1)
 
         proxy = ttk.Frame(frame)
         proxy.grid(row=3, column=0, columnspan=3, sticky="ew", pady=(8, 0))
-        self.install_button = ttk.Button(proxy, text="安装接管", command=self._install)
+        self.install_button = ttk.Button(proxy, text=t("btn_install"),
+                                         command=self._install)
         self.install_button.grid(row=0, column=0, sticky="ew", padx=(0, 6))
-        self.restore_button = ttk.Button(proxy, text="恢复原生", command=self._restore)
+        self.restore_button = ttk.Button(proxy, text=t("btn_restore"),
+                                         command=self._restore)
         self.restore_button.grid(row=0, column=1, sticky="ew")
         proxy.columnconfigure(0, weight=1)
         proxy.columnconfigure(1, weight=1)
@@ -493,11 +525,34 @@ class Panel:
         self.status_label.grid(row=4, column=0, columnspan=3, sticky="w",
                                pady=(12, 0))
 
-        # 版本号常驻右下角：标题栏放不下，日志里也有
-        ttk.Label(frame, text="v%s" % VERSION, foreground=C_GRAY).grid(
-            row=5, column=0, columnspan=3, sticky="e")
+        # 底部：语言选择 + 版本号
+        bottom = ttk.Frame(frame)
+        bottom.grid(row=5, column=0, columnspan=3, sticky="ew", pady=(6, 0))
+        self.lang_box = ttk.Combobox(bottom, values=("中文", "English"),
+                                     state="readonly", width=8)
+        self.lang_box.set("English" if get_language() == "en" else "中文")
+        self.lang_box.grid(row=0, column=0, sticky="w")
+        self.lang_box.bind("<<ComboboxSelected>>", self._on_language)
+        ttk.Label(bottom, text="v%s" % VERSION, foreground=C_GRAY).grid(
+            row=0, column=1, sticky="e")
+        bottom.columnconfigure(1, weight=1)
 
         self._refresh_proxy_lamp()
+
+    def _on_language(self, _event=None):
+        code = "en" if self.lang_box.get() == "English" else "zh"
+        if code == get_language():
+            return
+        if self._write_job is not None:
+            self.root.after_cancel(self._write_job)
+            self._flush_values()
+        set_language(code)
+        settings = load_settings()
+        settings["language"] = code
+        save_settings(settings)
+        for child in self.root.winfo_children():
+            child.destroy()
+        self._build()
 
     # ── 交互 ─────────────────────────────────────────────────────
     def _on_slide(self, key):
@@ -513,18 +568,17 @@ class Panel:
         try:
             save_values(config_path(), values)
         except Exception as exc:
-            self.log("保存手感失败：%s" % exc)
+            self.log(t("log_save_fail", exc))
             return
-        self.log("手感已保存：路面 %.2f ｜ 刹车 %.2f ｜ 油门 %.2f ｜ 事件 %.2f ｜ 推头 %.2f"
-                 % (values["grip_road"], values["trigger_floor"],
-                    values["throttle_floor"], values["trigger_event"],
-                    values["understeer_gain"]))
+        self.log(t("log_saved", values["grip_road"], values["trigger_floor"],
+                   values["throttle_floor"], values["trigger_event"],
+                   values["understeer_gain"]))
 
     def _start(self):
         if not proxy_installed():
-            self.log("警告：代理 DLL 不在 ACC 目录，扳机会被 ACC 每帧冲掉")
+            self.log(t("log_proxy_missing"))
         self.runner.set_drive(True)
-        self.log("正在启动震动……")
+        self.log(t("log_starting"))
 
     def _stop(self):
         self.runner.set_drive(False)
@@ -532,40 +586,37 @@ class Panel:
     def _install(self):
         folder = acc_bin()
         if folder is None:
-            messagebox.showerror("找不到 ACC", "没在预设路径里找到 ACC。\n"
-                                 "请确认游戏装在 Steam 库里。")
+            messagebox.showerror(t("dlg_no_acc_title"), t("dlg_no_acc_short"))
             return
         if acc_running():
-            messagebox.showwarning("ACC 正在运行", "游戏里加载着这个 DLL，改不动。\n"
-                                   "请先完全退出 ACC，再点一次。")
+            messagebox.showwarning(t("dlg_running_title"), t("dlg_running_body"))
             return
         if not PROXY_SOURCE.exists() and not PROXY_LOCAL.exists():
-            messagebox.showerror("文件缺失", "找不到 tools\\xinput_proxy\\xinput1_3.dll。")
+            messagebox.showerror(t("dlg_missing_title"), t("dlg_missing_body"))
             return
         source = PROXY_SOURCE if PROXY_SOURCE.exists() else PROXY_LOCAL
         try:
             shutil.copy2(source, folder / "xinput1_3.dll")
         except PermissionError:
-            messagebox.showerror("写入被拒绝", "复制失败，文件可能被占用。\n"
-                                 "请确认 ACC 已完全退出；仍失败就右键以管理员身份运行。")
+            messagebox.showerror(t("dlg_denied_title"), t("dlg_denied_body"))
             return
         except Exception as exc:
-            messagebox.showerror("复制失败", str(exc))
+            messagebox.showerror(t("dlg_copy_fail_title"), str(exc))
             return
-        self.log("已安装接管：ACC 的震动写入已被屏蔽（下次启动 ACC 生效）")
+        self.log(t("log_installed"))
         self._refresh_proxy_lamp()
 
     def _restore(self):
         folder = acc_bin()
         if folder is None:
-            messagebox.showerror("找不到 ACC", "没在预设路径里找到 ACC。")
+            messagebox.showerror(t("dlg_no_acc_title"), t("dlg_no_acc_short"))
             return
         if acc_running():
-            messagebox.showwarning("ACC 正在运行", "请先完全退出 ACC，再点一次。")
+            messagebox.showwarning(t("dlg_running_title"), t("dlg_running_body"))
             return
         current = folder / "xinput1_3.dll"
         if not current.exists():
-            self.log("本来就没有接管，无需恢复")
+            self.log(t("log_nothing_to_restore"))
             self._refresh_proxy_lamp()
             return
         try:
@@ -574,20 +625,23 @@ class Panel:
                 backup.unlink()
             current.rename(backup)
         except PermissionError:
-            messagebox.showerror("改名被拒绝", "文件可能被占用，请确认 ACC 已退出。")
+            messagebox.showerror(t("dlg_rename_denied_title"),
+                                 t("dlg_rename_denied_body"))
             return
         except Exception as exc:
-            messagebox.showerror("恢复失败", str(exc))
+            messagebox.showerror(t("dlg_restore_fail_title"), str(exc))
             return
-        self.log("已恢复原生：ACC 自己的震动回来了（下次启动 ACC 生效）")
+        self.log(t("log_restored"))
         self._refresh_proxy_lamp()
 
     # ── 刷新 ─────────────────────────────────────────────────────
     def _refresh_proxy_lamp(self):
         if proxy_installed():
-            self.lamps["proxy"].configure(text="●  代理 DLL：已安装", foreground=C_GREEN)
+            self.lamps["proxy"].configure(text="●  " + t("lamp_proxy_on"),
+                                          foreground=C_GREEN)
         else:
-            self.lamps["proxy"].configure(text="○  代理 DLL：未安装", foreground=C_RED)
+            self.lamps["proxy"].configure(text="○  " + t("lamp_proxy_off"),
+                                          foreground=C_RED)
 
     def _tick(self):
         if self._closing:
@@ -596,18 +650,25 @@ class Panel:
 
         if state["driving"]:
             if state["pad"]:
-                self.lamps["pad"].configure(text="●  手柄：已连接", foreground=C_GREEN)
+                self.lamps["pad"].configure(text="●  " + t("lamp_pad_on"),
+                                            foreground=C_GREEN)
             else:
-                self.lamps["pad"].configure(text="○  手柄：等待连接", foreground=C_AMBER)
-            self.lamps["drive"].configure(text="●  震动：运行中", foreground=C_GREEN)
+                self.lamps["pad"].configure(text="○  " + t("lamp_pad_wait"),
+                                            foreground=C_AMBER)
+            self.lamps["drive"].configure(text="●  " + t("lamp_drive_on"),
+                                          foreground=C_GREEN)
         else:
-            self.lamps["pad"].configure(text="○  手柄：未启动", foreground=C_GRAY)
-            self.lamps["drive"].configure(text="○  震动：已停止", foreground=C_GRAY)
+            self.lamps["pad"].configure(text="○  " + t("lamp_pad_off"),
+                                        foreground=C_GRAY)
+            self.lamps["drive"].configure(text="○  " + t("lamp_drive_off"),
+                                          foreground=C_GRAY)
 
         if state["acc"]:
-            self.lamps["acc"].configure(text="●  ACC 遥测：更新中", foreground=C_GREEN)
+            self.lamps["acc"].configure(text="●  " + t("lamp_acc_on"),
+                                        foreground=C_GREEN)
         else:
-            self.lamps["acc"].configure(text="○  ACC 遥测：没有数据", foreground=C_AMBER)
+            self.lamps["acc"].configure(text="○  " + t("lamp_acc_off"),
+                                        foreground=C_AMBER)
 
         self.start_button.configure(state="disabled" if state["driving"] else "normal")
         self.stop_button.configure(state="normal" if state["driving"] else "disabled")
@@ -629,7 +690,7 @@ class Panel:
             self.runner.shutdown()
         except Exception:
             pass
-        self.log("面板退出")
+        self.log(t("log_exit"))
         self.root.destroy()
 
 
