@@ -47,12 +47,20 @@ def _source_names(trace, key):
     return "+".join(name for name, _amplitude in items)
 
 
+def _tuning_text(tuning):
+    return ("路面 %.2f ｜ 路肩 %.2f ｜ 底层 %.2f ｜ 事件 %.2f"
+            % (tuning["grip_road"], tuning["grip_kerb"],
+               tuning["trigger_floor"], tuning["trigger_event"]))
+
+
 def _status_line(snap, motors, engine):
     trace = engine.last_trace
     abs_on = 1 if (snap.abs_level > 0.05 or abs(snap.abs_vibrations) > 0.05) else 0
-    return ("[%07d] %6.1f km/h  档 %-2s  刹车 %.2f  ABS %d  |  "
+    kerb_peak = (engine.last_metrics or {}).get("kerb_peak", 0.0)
+    return ("[%07d] %6.1f km/h  档 %-2s  刹车 %.2f  ABS %d  路肩峰 %.2f  |  "
             "扳机 %3.0f/%3.0f  握把 %3.0f/%3.0f  |  左 %s ｜ 右 %s"
-            % (snap.packet_id, snap.speed_kmh, snap.gear_label, snap.brake, abs_on,
+            % (snap.packet_id, snap.speed_kmh, snap.gear_label, snap.brake,
+               abs_on, kerb_peak,
                motors.left_trigger * 100.0, motors.right_trigger * 100.0,
                motors.left_grip * 100.0, motors.right_grip * 100.0,
                _source_names(trace, "left_trigger"),
@@ -87,13 +95,15 @@ def main():
 
     telemetry = AccTelemetry()
     tuning_file = config_path()
+    tuning = load_tuning(tuning_file)
+    engine = HapticsEngine(tuning)
     if tuning_file.exists():
-        print("手感设置：%s（改完保存，1 秒内生效）" % tuning_file.name)
+        print("手感设置：%s" % tuning_file.name)
     else:
-        print("手感设置：使用默认值（双击 调手感.bat 可以改）")
+        print("手感设置：默认值（双击 调手感.bat 可以改）")
+    print("           %s" % _tuning_text(engine.tuning))
     print()
 
-    engine = HapticsEngine(load_tuning(tuning_file))
     driver = PadDriver()
 
     try:
@@ -128,7 +138,8 @@ def main():
                 if mtime is not None and mtime != config_mtime:
                     config_mtime = mtime
                     engine.set_tuning(load_tuning(tuning_file))
-                    print("[手感] 设置已重新读取。", flush=True)
+                    print("[手感] 已更新：%s" % _tuning_text(engine.tuning),
+                          flush=True)
 
             if snap is None:
                 # 没数据就不要喂旧快照。清零一次，引擎的包络也一起清掉。

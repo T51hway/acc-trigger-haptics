@@ -87,6 +87,7 @@ GRIP_ROAD_CURVE = 0.50           # 轻纹理抬升（越小越明显）
 GRIP_KERB_WEIGHT = 1.15          # 路肩在握把上的权重
 KERB_SIDE_BASE = 0.80            # 路肩在两侧的基础占比
 KERB_SIDE_SPAN = 0.25            # 轮荷差带来的左右偏移（最大 1.05 : 0.55）
+KERB_HOLD = 0.30                 # 路肩峰值保持 300ms：大马达起转慢，短促脉冲它跟不上
 G_VIBRATION_DEADZONE = 0.05      # gVibrations 不设死区就是永远在震（实测 91.5% 的帧 >0.02）
 G_VIBRATION_FULL = 7.5           # 实测上限
 KERB_DEADZONE = 0.005
@@ -109,8 +110,8 @@ DEFAULT_TUNING = {
     "trigger_event": EVENT_AMPLITUDE,
 }
 TUNING_RANGES = {
-    "grip_road": (0.0, 3.0),
-    "grip_kerb": (0.0, 3.0),
+    "grip_road": (0.0, 6.0),
+    "grip_kerb": (0.0, 6.0),
     "trigger_floor": (0.0, 0.50),
     "trigger_event": (0.0, 1.0),
 }
@@ -118,23 +119,18 @@ TUNING_RANGES = {
 CONFIG_NAME = "手感设置.toml"
 CONFIG_TEMPLATE = """# ACC 手柄震动 · 手感设置
 #
-# 改完保存就行：程序每秒检查一次，1 秒内自动生效，不用重启。
-# 0.0 ~ 1.0 是强度；增益 1.0 是基准，觉得不够可以到 1.5、2.0。
+# 只改等号 = 右边的数字。# 后面是说明，改了不会生效。
+# 改完保存：程序每秒检查一次，1 秒内生效，不用重启。
+# 增益类：1.0 是基准，越大越强（0 ~ 6）。
 
-# ── 握把 ──────────────────────────────────────────────
-# 路面纹理强度：1.0 是基准。觉得路面太轻就加到 1.2 ~ 1.5。
-grip_road = %(grip_road).2f
+grip_road = %(grip_road).2f      # 握把·路面纹理
+grip_kerb = %(grip_kerb).2f      # 握把·路肩
 
-# 路肩强度：1.0 是基准。觉得路肩不够就加到 1.2 ~ 1.5。
-grip_kerb = %(grip_kerb).2f
-
-# ── 左扳机 ────────────────────────────────────────────
-# 刹车压力底层（0 ~ 0.35）。D5 建议 0.20。
-# 调高更有"踩下去"的实感，但锁死 / ABS 的脉冲就没那么突出。
+# 左扳机：刹车压力底层（0 ~ 0.35）。D5 基准 0.20；
+# 调高更有实感，但锁死 / ABS 的对比会变弱。
 trigger_floor = %(trigger_floor).2f
 
-# 扳机事件强度：锁死 / ABS 脉冲 / 后轮打滑（0 ~ 1.0）。
-trigger_event = %(trigger_event).2f
+trigger_event = %(trigger_event).2f   # 扳机事件：锁死 / ABS / 后轮打滑（0 ~ 1.0）
 """ % DEFAULT_TUNING
 
 
@@ -156,6 +152,10 @@ def load_tuning(path=None):
         print("[手感] 读取 %s 失败：%s（先用默认值）" % (path.name, exc))
         return tuning
 
+    for key in data:
+        if key not in TUNING_RANGES:
+            print("[手感] 不认识的设置项 %s，已忽略。" % key)
+
     for key, (low, high) in TUNING_RANGES.items():
         if key not in data:
             continue
@@ -165,8 +165,13 @@ def load_tuning(path=None):
             print("[手感] %s 不是数字，忽略。" % key)
             continue
         if not math.isfinite(value):
+            print("[手感] %s 不是有效数字，忽略。" % key)
             continue
-        tuning[key] = max(low, min(high, value))
+        clamped = max(low, min(high, value))
+        if clamped != value:
+            print("[手感] %s = %.2f 超出 %.2f~%.2f，按 %.2f 处理。"
+                  % (key, value, low, high, clamped))
+        tuning[key] = clamped
     return tuning
 
 
@@ -273,6 +278,8 @@ class HapticsEngine:
         self._event_start = -1e9
         self._abs_start = -1e9
         self._rear_level = 0.0
+        self._kerb_level = 0.0
+        self._kerb_peak = 0.0
         self._last_update = None
         self.last_trace = {}
         self.last_metrics = {}
@@ -291,6 +298,8 @@ class HapticsEngine:
         self._event_start = -1e9
         self._abs_start = -1e9
         self._rear_level = 0.0
+        self._kerb_level = 0.0
+        self._kerb_peak = 0.0
         self._last_update = None
         self.last_trace = {}
         self.last_metrics = {}
@@ -311,7 +320,16 @@ class HapticsEngine:
         bias = _load_bias(snap.wheel_load)
         road = _scale(_num(snap.g_vibrations),
                       G_VIBRATION_DEADZONE, G_VIBRATION_FULL) ** GRIP_ROAD_CURVE
-        kerb = _scale(abs(_num(snap.kerb_vibration)), KERB_DEADZONE, KERB_FULL)
+        kerb_now = _scale(abs(_num(snap.kerb_vibration)), KERB_DEADZONE, KERB_FULL)
+        # 路肩是短促尖峰，大马达起转慢，跟不上 6ms 的脉冲。
+        # 做 300ms 峰值保持：压上去就是一段清楚的震动，而不是一下"咔"。
+        if kerb_now >= self._kerb_level:
+            self._kerb_level = kerb_now
+        else:
+            self._kerb_level = max(kerb_now, self._kerb_level - dt / KERB_HOLD)
+        # 另外留一个 1 秒峰值，只给 --status 看，方便确认信号有没有来
+        self._kerb_peak = max(kerb_now, self._kerb_peak - dt / 1.0)
+        kerb = self._kerb_level
         left_share = KERB_SIDE_BASE + KERB_SIDE_SPAN * bias
         right_share = KERB_SIDE_BASE - KERB_SIDE_SPAN * bias
 
@@ -390,6 +408,7 @@ class HapticsEngine:
             "abs_pulse": abs_pulse,
             "road": road,
             "kerb": kerb,
+            "kerb_peak": self._kerb_peak,
             "load_bias": bias,
         }
 
