@@ -55,14 +55,17 @@ def _tuning_text(tuning):
 
 def _status_line(snap, motors, engine):
     trace = engine.last_trace
+    metrics = engine.last_metrics or {}
     abs_on = 1 if (snap.abs_level > 0.05 or abs(snap.abs_vibrations) > 0.05) else 0
-    kerb_peak = (engine.last_metrics or {}).get("kerb_peak", 0.0)
-    return ("[%07d] %6.1f km/h  档 %-2s  刹车 %.2f  ABS %d  路肩峰 %.2f  |  "
-            "扳机 %3.0f/%3.0f  握把 %3.0f/%3.0f  |  左 %s ｜ 右 %s"
+    return ("[%07d] %6.1f km/h  档 %-2s  刹车 %.2f  ABS %d  "
+            "路肩峰 %.2f 偏 %+.2f  |  "
+            "扳机 %3.0f/%3.0f  握把峰 %3.0f/%3.0f  |  左 %s ｜ 右 %s"
             % (snap.packet_id, snap.speed_kmh, snap.gear_label, snap.brake,
-               abs_on, kerb_peak,
+               abs_on, metrics.get("kerb_peak", 0.0),
+               metrics.get("kerb_bias", 0.0),
                motors.left_trigger * 100.0, motors.right_trigger * 100.0,
-               motors.left_grip * 100.0, motors.right_grip * 100.0,
+               metrics.get("grip_peak_left", 0.0) * 100.0,
+               metrics.get("grip_peak_right", 0.0) * 100.0,
                _source_names(trace, "left_trigger"),
                _source_names(trace, "right_trigger")))
 

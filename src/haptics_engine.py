@@ -122,6 +122,7 @@ CONFIG_TEMPLATE = """# ACC 手柄震动 · 手感设置
 # 只改等号 = 右边的数字。# 后面是说明，改了不会生效。
 # 改完保存：程序每秒检查一次，1 秒内生效，不用重启。
 # 增益类：1.0 是基准，越大越强（0 ~ 6）。
+# 注意：超过 2.0 容易把马达顶满，左右差别会被抹平。
 
 grip_road = %(grip_road).2f      # 握把·路面纹理
 grip_kerb = %(grip_kerb).2f      # 握把·路肩
@@ -253,19 +254,26 @@ def _mix(contributions):
     return _soft_clip(total), used
 
 
-def _load_bias(loads):
-    """左右轮荷差，-1~1。用来给路肩分个左右。
+def _load_bias(loads, travels):
+    """左右差，-1~1。用来给路肩分个左右。
 
-    注意：这只是个便宜的启发式，不是真正的"路肩在哪一侧"。
-    压路肩时那侧轮荷会抬起来，方向一般对，但弯道里的外侧也会更重。
-    阶段 3 有了手感数据再改，现在先保证"有左右差别"。
+    优先用轮荷；ACC 停车时轮荷会读 0，行驶时也可能拿不到，
+    这时退回悬挂行程差：压路肩那侧会压缩，行程更大。
+    注意：这只是个便宜的启发式，弯道外侧也会更重，阶段 3 再校。
     """
     values = [_num(v) for v in loads]
     total = sum(values)
-    if total <= 1.0:
+    if total > 1.0:
+        left = (values[0] + values[2]) / total
+        return max(-1.0, min(1.0, (left - 0.5) * 4.0))
+
+    travel = [_num(v) for v in travels]
+    left_travel = travel[0] + travel[2]
+    right_travel = travel[1] + travel[3]
+    total_travel = left_travel + right_travel
+    if total_travel <= 1e-6:
         return 0.0
-    left = (values[0] + values[2]) / total
-    return max(-1.0, min(1.0, (left - 0.5) * 4.0))
+    return max(-1.0, min(1.0, (left_travel - right_travel) / total_travel * 4.0))
 
 
 class HapticsEngine:
@@ -280,6 +288,8 @@ class HapticsEngine:
         self._rear_level = 0.0
         self._kerb_level = 0.0
         self._kerb_peak = 0.0
+        self._kerb_bias = 0.0
+        self._grip_peak = [0.0, 0.0]
         self._last_update = None
         self.last_trace = {}
         self.last_metrics = {}
@@ -300,6 +310,8 @@ class HapticsEngine:
         self._rear_level = 0.0
         self._kerb_level = 0.0
         self._kerb_peak = 0.0
+        self._kerb_bias = 0.0
+        self._grip_peak = [0.0, 0.0]
         self._last_update = None
         self.last_trace = {}
         self.last_metrics = {}
@@ -317,7 +329,7 @@ class HapticsEngine:
         first_tick = self._last_update is None
         self._last_update = now
 
-        bias = _load_bias(snap.wheel_load)
+        bias = _load_bias(snap.wheel_load, snap.suspension_travel)
         road = _scale(_num(snap.g_vibrations),
                       G_VIBRATION_DEADZONE, G_VIBRATION_FULL) ** GRIP_ROAD_CURVE
         kerb_now = _scale(abs(_num(snap.kerb_vibration)), KERB_DEADZONE, KERB_FULL)
@@ -325,13 +337,14 @@ class HapticsEngine:
         # 做 300ms 峰值保持：压上去就是一段清楚的震动，而不是一下"咔"。
         if kerb_now >= self._kerb_level:
             self._kerb_level = kerb_now
+            self._kerb_bias = bias      # 峰值那一刻的左右方向，保持住
         else:
             self._kerb_level = max(kerb_now, self._kerb_level - dt / KERB_HOLD)
         # 另外留一个 1 秒峰值，只给 --status 看，方便确认信号有没有来
         self._kerb_peak = max(kerb_now, self._kerb_peak - dt / 1.0)
         kerb = self._kerb_level
-        left_share = KERB_SIDE_BASE + KERB_SIDE_SPAN * bias
-        right_share = KERB_SIDE_BASE - KERB_SIDE_SPAN * bias
+        left_share = KERB_SIDE_BASE + KERB_SIDE_SPAN * self._kerb_bias
+        right_share = KERB_SIDE_BASE - KERB_SIDE_SPAN * self._kerb_bias
 
         left_grip, left_grip_trace = _mix([
             ("路面", road * self.tuning["grip_road"]),
@@ -341,6 +354,9 @@ class HapticsEngine:
             ("路面", road * self.tuning["grip_road"]),
             ("右路肩", kerb * right_share * self.tuning["grip_kerb"]),
         ])
+        # 最近 1 秒的握把峰值，只给 --status 看：1Hz 打一行很容易错过短事件
+        self._grip_peak[0] = max(left_grip, self._grip_peak[0] - dt / 1.0)
+        self._grip_peak[1] = max(right_grip, self._grip_peak[1] - dt / 1.0)
 
         # ── 左扳机：刹车压力打底，锁死 / ABS 覆盖上去 ────────────
         brake = _clamp01(_num(snap.brake))
@@ -409,6 +425,9 @@ class HapticsEngine:
             "road": road,
             "kerb": kerb,
             "kerb_peak": self._kerb_peak,
+            "kerb_bias": self._kerb_bias,
+            "grip_peak_left": self._grip_peak[0],
+            "grip_peak_right": self._grip_peak[1],
             "load_bias": bias,
         }
 
