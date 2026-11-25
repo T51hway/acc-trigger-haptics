@@ -51,7 +51,7 @@ Five sliders in the panel, saved automatically:
 | Event strength | Pulse strength for lock / ABS / wheelspin | 0.75 |
 | Understeer gain | Right trigger strength when the front pushes; 0 = off | 1.00 |
 
-You can also edit `手感设置.toml` directly (the `调手感.bat` helper opens it).
+You can also edit `手感设置.toml` directly (it sits next to the exe).
 Only change the numbers on the right-hand side of `=`.
 
 ---
