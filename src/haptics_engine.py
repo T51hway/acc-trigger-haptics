@@ -20,6 +20,8 @@
 两层（D5）：
     底层：刹车压力 × 20%（左扳机）、油门压力 × 15%（右扳机）。
           不看屏幕也知道自己踩了几成，上限压得很低，免得盖住上层信息。
+          车速低于 5 km/h 时这层淡出到 0（停着踩刹车不该一直震），
+          20 km/h 以上恢复全量。
     上层：临界事件，60~80ms，最高 75%（可调，见 手感设置.toml）。
 
 混音（D11）：
@@ -75,6 +77,12 @@ from acc_telemetry import Snapshot
 # 阶段 3 的闭眼测试要重新定，先集中放在这里，方便一处改。
 PRESSURE_FLOOR_MAX = 0.20        # 底层压力反馈上限 20%（D5）
 THROTTLE_FLOOR_MAX = 0.15        # 右扳机·油门底层；比刹车低，避免长时间给油一直嗡嗡
+
+# 压力底层的车速门限（2026-11-25 用户要求）：
+# 停着踩满刹车也一直震，像故障；车速低于 OFF 时这一层归零，到 FULL 恢复全量。
+# 只影响"压力底层"，锁死 / ABS / 打滑 / 推头不受影响。
+FLOOR_SPEED_OFF = 5.0            # km/h，低于它压力层完全关掉
+FLOOR_SPEED_FULL = 20.0          # km/h，到这里恢复全量
 EVENT_AMPLITUDE = 0.75           # 临界 / ABS 事件幅度（第一版手感，从 70% 提上来）
 EVENT_DURATION = 0.070           # 事件持续 70ms（设计区间 60~80ms）
 EVENT_RELEASE = 0.015            # 最后 15ms 渐落，避免硬切
@@ -337,6 +345,9 @@ class HapticsEngine:
 
         road = _scale(_num(snap.g_vibrations),
                       G_VIBRATION_DEADZONE, G_VIBRATION_FULL) ** GRIP_ROAD_CURVE
+        speed = _num(snap.speed_kmh)
+        # 停车时把"压力底层"关掉：停着踩满刹车也一直震，像故障
+        floor_factor = _scale(speed, FLOOR_SPEED_OFF, FLOOR_SPEED_FULL)
 
         # 握把只剩路面纹理（路肩通道 2026-11-25 移除：用户用不上，
         # 而且它会和路面抢同一个马达的预算）
@@ -353,7 +364,9 @@ class HapticsEngine:
         abs_pulse = _clamp01(abs(_num(snap.abs_vibrations)))
         abs_active = max(abs_flag, abs_pulse) > ABS_GATE
 
-        left_trigger_parts = [("刹车压力", brake * self.tuning["trigger_floor"])]
+        left_trigger_parts = [
+            ("刹车压力", brake * self.tuning["trigger_floor"] * floor_factor),
+        ]
 
         if abs_active:
             # 自己出节奏：70ms 脉冲 + 120ms 不应期，约 8Hz。
@@ -401,7 +414,6 @@ class HapticsEngine:
         # ── 推头：前轮比后轮多滑（2026-11-25 按实测标定）──────────
         # 只用侧滑角：前轮被方向盘拧着走，前轮侧滑角明显大于后轮，说明前轮在推。
         # 打转/出界时四个角一起失真，这种帧跳过，别误报成推头。
-        speed = _num(snap.speed_kmh)
         front_angle = max(abs(_num(snap.slip_angle[0])),
                           abs(_num(snap.slip_angle[1])))
         rear_angle = max(abs(_num(snap.slip_angle[2])),
@@ -426,7 +438,7 @@ class HapticsEngine:
                                        * min(1.0, dt / UNDERSTEER_RELEASE))
 
         right_trigger, right_trigger_trace = _mix([
-            ("油门压力", throttle * self.tuning["throttle_floor"]),
+            ("油门压力", throttle * self.tuning["throttle_floor"] * floor_factor),
             ("后轮打滑", self._rear_level),
             ("推头", self._understeer_level),
         ])
@@ -535,6 +547,8 @@ def main():
         ("ABS 正在动作", dict(brake=1.0, abs_level=1.0, abs_vibrations=1.0,
                              slip_ratio=(-0.05, -0.05, 0.02, 0.02))),
         ("后轮打滑 0.50", dict(throttle=1.0, slip_ratio=(-0.02, -0.02, 0.50, 0.45))),
+        ("停着踩满刹车（应该不震）", dict(brake=1.0, speed_kmh=0.0)),
+        ("停着踩满油门（应该不震）", dict(throttle=1.0, speed_kmh=0.0)),
         ("全油门直道，不打滑", dict(throttle=1.0, slip_ratio=(0.01, 0.01, 0.02, 0.02))),
         ("推头（前轮比后轮多滑）", dict(speed_kmh=130.0, throttle=1.0,
                                     slip_angle=(0.15, 0.15, 0.06, 0.06))),
@@ -556,6 +570,7 @@ def main():
     print("  前轮锁死    左扳机 90% 上下，来源是“前轮锁死 + 刹车压力”")
     print("  ABS 动作    左扳机 90% 上下，来源是“ABS 介入 + 刹车压力”")
     print("  后轮打滑    右扳机跟着滑移量走，滑得越多越强")
+    print("  停着踩踏板  左右扳机都应该是 0（压力底层有车速门限）")
     print("  全油门直道  右扳机约 15%（油门底层），滑起来会更强")
     print("  推头        右扳机跟着“前轮比后轮多滑”的程度走")
     print("  打转        四个角一起失真，不算推头，右扳机应该是 0")
