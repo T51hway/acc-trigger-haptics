@@ -43,6 +43,7 @@ SCALARS = [
     ("brake",            "f",  8),
     ("gear",             "i",  16),
     ("rpms",             "i",  20),
+    ("steerAngle",       "f",  24),      # 2026-11-25 加：失控标定用
     ("speedKmh",         "f",  28),
     ("heading",          "f",  208),
     ("abs",              "f",  252),
@@ -65,6 +66,8 @@ VECTORS = [
 VEC3 = [
     # 名字,              偏移（三轴）
     ("accG",             44),
+    ("localAngularVelocity", 296),   # 2026-11-25 加：Y 轴 = 横摆角速度
+    ("localVelocity",    568),       # 2026-11-25 加：X 横向、Z 纵向
 ]
 
 WHEELS = ("左前", "右前", "左后", "右后")
@@ -239,6 +242,16 @@ def sanity_warnings(d, region_size):
         if not (-50.0 < v < 50.0):
             warn.append("wheelSlip[%s] = %.3f 数值离谱，偏移可能不对。" % (WHEELS[i], v))
             break
+    if not (-10.0 < d["steerAngle"] < 10.0):
+        warn.append("steerAngle = %.3f 超出常识范围，偏移可能不对。" % d["steerAngle"])
+    if not (-20.0 < d["localAngularVelocity"][1] < 20.0):
+        warn.append("localAngularVelocity[Y] = %.3f 超出常识范围，偏移可能不对。"
+                    % d["localAngularVelocity"][1])
+    speed_mps = abs(d["speedKmh"]) / 3.6
+    local_mps = (sum(v * v for v in d["localVelocity"])) ** 0.5
+    if speed_mps > 5.0 and abs(local_mps - speed_mps) > speed_mps * 0.25:
+        warn.append("localVelocity 模长 %.2f 和车速 %.2f 对不上，偏移或轴序可能不对。"
+                    % (local_mps, speed_mps))
     return warn
 
 
@@ -278,8 +291,11 @@ def main():
         csv_file = open(args.csv, "w", newline="", encoding="utf-8-sig")
         csv_writer = csv.writer(csv_file)
         csv_writer.writerow(
-            ["packetId", "speedKmh", "gas", "brake", "gear", "rpms", "abs", "heading",
+            ["packetId", "speedKmh", "gas", "brake", "gear", "rpms", "steerAngle",
+             "abs", "heading",
              "accGx", "accGy", "accGz",
+             "localAngularVelocityX", "localAngularVelocityY", "localAngularVelocityZ",
+             "localVelocityX", "localVelocityY", "localVelocityZ",
              "kerbVibration", "slipVibrations", "gVibrations", "absVibrations"]
             + ["wheelSlip_" + w for w in ("LF", "RF", "LR", "RR")]
             + ["slipRatio_" + w for w in ("LF", "RF", "LR", "RR")]
@@ -378,8 +394,12 @@ def main():
             if csv_writer is not None:
                 csv_writer.writerow(
                     [d["packetId"], d["speedKmh"], d["gas"], d["brake"], d["gear"],
-                     d["rpms"], d["abs"], d["heading"],
+                     d["rpms"], d["steerAngle"], d["abs"], d["heading"],
                      d["accG"][0], d["accG"][1], d["accG"][2],
+                     d["localAngularVelocity"][0], d["localAngularVelocity"][1],
+                     d["localAngularVelocity"][2],
+                     d["localVelocity"][0], d["localVelocity"][1],
+                     d["localVelocity"][2],
                      d["kerbVibration"], d["slipVibrations"],
                      d["gVibrations"], d["absVibrations"]]
                     + d["wheelSlip"] + d["slipRatio"] + d["slipAngle"]
@@ -402,6 +422,13 @@ def main():
                 "%s %6.0f" % (WHEELS[i], d["wheelLoad"][i]) for i in range(4)))
             lines.append("  accG          " + "  ".join(
                 "%s %7.3f" % (AXES[i], d["accG"][i]) for i in range(3)))
+            lines.append("  方向盘 %7.3f（量纲待确认）   横摆 %7.3f rad/s"
+                         % (d["steerAngle"], d["localAngularVelocity"][1]))
+            local_speed = (sum(v * v for v in d["localVelocity"])) ** 0.5
+            lines.append("  车身速度      " + "  ".join(
+                "%s %7.2f" % (AXES[i], d["localVelocity"][i]) for i in range(3))
+                + "   （模长 %.2f，车速 %.2f）"
+                % (local_speed, d["speedKmh"] / 3.6))
             lines.append("  震动通道      路肩 %6.3f   打滑 %6.3f   纵向G %6.3f   ABS %6.3f"
                          % (d["kerbVibration"], d["slipVibrations"],
                             d["gVibrations"], d["absVibrations"]))

@@ -81,6 +81,7 @@ SCALARS = [
     ("brake", "f", 8),                # brake
     ("gear_raw", "i", 16),            # gear，原始值 0=R、1=N、2=1 档、3=2 档……
     ("rpm", "i", 20),                 # rpms
+    ("steer_angle", "f", 24),         # steerAngle，方向盘角度（备用；当前失控不用，量纲待实测）
     ("speed_kmh", "f", 28),           # speedKmh
     ("tc_level", "f", 204),           # tc，0~1
     ("heading", "f", 208),            # heading，-π~π 弧度（实测）
@@ -105,7 +106,8 @@ VEC3 = [
     # 名字, 偏移（三个 float）
     ("velocity", 32),                 # 世界坐标速度
     ("acc_g", 44),                    # ⚠ x=横向, y=垂直, z=纵向
-    ("local_velocity", 568),          # 车身坐标速度
+    ("local_velocity", 568),          # 车身坐标速度（备用；参考项目用 X=横向、Z=纵向）
+    ("local_angular_velocity", 296),  # 车身角速度（备用；参考项目用 Y 轴当横摆）
 ]
 
 _I = struct.Struct("<i")
@@ -148,7 +150,10 @@ class Snapshot:
     字段对照（Python 名 ← ACC 原名）：
         throttle ← gas          rpm ← rpms        abs_level ← abs
         tc_level ← tc           speed_kmh ← speedKmh
+        steer_angle ← steerAngle
         acc_g[3] 的轴序是 x=横向、y=垂直、z=纵向，别按字面用。
+        local_velocity[3] 参考项目按 X=横向、Z=纵向用；local_angular_velocity[1]
+        是横摆角速度（Y 轴）。两者只读出来备用，当前失控通道不用，也还没实采验证。
 
     ⚠ 档位：ACC 原始值是从 0 起算的——
         0=R、1=N、2=1 档、3=2 档……（2026-11-25 实测确认）
@@ -168,6 +173,8 @@ class Snapshot:
         slip_vibrations ±1（被截断）
         g_vibrations   0~7.5（不截断）
         abs_vibrations 只有 -1/0/1，本质是"ABS 正在动作"的方波
+        steer_angle    备用；量纲还没在本项目确认
+        local_angular_velocity[1]  备用；横摆角速度（参考项目用法）
     """
 
     packet_id: int
@@ -176,6 +183,7 @@ class Snapshot:
     brake: float
     gear_raw: int
     rpm: int
+    steer_angle: float
     speed_kmh: float
     tc_level: float
     heading: float
@@ -193,6 +201,7 @@ class Snapshot:
     velocity: tuple
     acc_g: tuple
     local_velocity: tuple
+    local_angular_velocity: tuple
 
     # ── 档位：ACC 原始值从 0 起算，这里换成直观值 ────────────────
     @property
@@ -446,6 +455,12 @@ def _details(snap):
         % (snap.packet_id, snap.speed_kmh, snap.gear_label, snap.rpm, snap.gear_raw),
         "  油门 %.2f   刹车 %.2f   ABS %.2f   TC %.2f"
         % (snap.throttle, snap.brake, snap.abs_level, snap.tc_level),
+        "  方向盘 %7.3f（量纲待确认）   横摆 %7.3f rad/s"
+        % (snap.steer_angle, snap.local_angular_velocity[1]),
+        "  车身速度 X %6.2f   Y %6.2f   Z %6.2f m/s   （模长 %.2f，车速 %.2f）"
+        % (snap.local_velocity
+           + (sum(v * v for v in snap.local_velocity) ** 0.5,
+              snap.speed_kmh / 3.6)),
         "  滑移比    " + "  ".join("%s %7.3f" % (WHEELS[i], snap.slip_ratio[i])
                                   for i in range(4)),
         "  打滑角    " + "  ".join("%s %7.3f" % (WHEELS[i], snap.slip_angle[i])

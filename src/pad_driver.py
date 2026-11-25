@@ -3,10 +3,10 @@
 
 这一层只管"写"，不管"该不该震"：
     输入：四个 0.0~1.0 的强度（左握把、右握把、左扳机、右扳机）
-    输出：以 60Hz 持续写进手柄的蓝牙 HID 报文
+    输出：以 60Hz 持续写进手柄的 HID 0x03 报文（蓝牙/有线都用它）
     至于什么时候该震什么，那是 haptics_engine.py 的事。
 
-为什么走蓝牙 HID（依据见 设计说明.md 的硬事实 6）：
+为什么走 HID 0x03（依据见 设计说明.md 的硬事实 6）：
     - 老 XInput 只有两个握把，根本够不到扳机
     - Windows.Gaming.Input 本机能写入、读回值也对，但马达不响
     - GameInput 本机连键盘都读不到设备
@@ -32,7 +32,7 @@
        不做"值不变就少发"的优化：报文尾部带着脉冲参数，多久会失效没确认过，
        而 60Hz 连续写是实测"又稳又满"的那条路，不拿它做实验。
     3. 回零必须立刻发，不等下一个节拍；stop() / 异常退出一定清零。
-    4. 蓝牙会掉。断开后每秒重试，连上后自动接着写。
+    4. 连接会掉（蓝牙断开/拔线）。断开后每秒重试，连上后自动接着写。
     5. 同一时间只允许一个写入者（两个会互相打断），用命名互斥体挡住。
     6. 点窗口 ×、注销、关机时 atexit 不会跑，用 SetConsoleCtrlHandler 抢一包零。
 
@@ -310,7 +310,7 @@ class PadBusy(PadError):
 # 驱动
 # ══════════════════════════════════════════════════════════════════
 class PadDriver:
-    """60Hz 的后台写入线程 + 一条蓝牙 HID 通道。
+    """60Hz 的后台写入线程 + 一条 HID 0x03 通道。
 
     线程安全：set_vibration() 可以从任何线程调用，最新一次的值会覆盖上一次
     （这是有意的——马达只关心"现在该多强"，不关心历史）。
@@ -449,7 +449,7 @@ class PadDriver:
             last_sent = self._last_sent
         return {
             "connected": self._handle is not None,
-            "channel": "蓝牙HID 0x03" if self._handle is not None else None,
+            "channel": "HID 0x03" if self._handle is not None else None,
             "product_id": self._product_id,
             "hz": self._hz,
             "target": target,
@@ -665,7 +665,7 @@ def main():
     print("马达驱动层自检（src/pad_driver.py）")
     print("=" * 62)
     print("开始前请确认：")
-    print("  1. 手柄已开机，蓝牙连上（这台机器只验证过蓝牙）")
+    print("  1. 手柄已开机，蓝牙或 USB-C 连上（两种都已验证）")
     print("  2. Steam 输入已关闭，否则指令会被 Steam 截走")
     print("  3. 这一步不用开 ACC，只测“能不能震”")
     print()
@@ -688,7 +688,7 @@ def main():
             print("等了 %.0f 秒还是没看到手柄，先不测了。" % args.wait)
             print("  - 按一下手柄中间的圆按钮，看灯是不是常亮")
             print("  - Windows 设置 → 蓝牙和其他设备，确认手柄在“已连接”里")
-            print("  - 有线连接目前不支持：这条报文只对蓝牙有效")
+            print("  - 如果用的是 USB-C 线，确认是数据线，不是只能充电的线")
             return 1
         _demo(driver)
     except KeyboardInterrupt:

@@ -12,7 +12,7 @@ all four motors: grips for road feel, triggers for braking, throttle and tyre li
 
 ## Quick start (about 3 minutes)
 
-Before you start: connect the controller over Bluetooth and turn **Steam Input** off in Steam.
+Before you start: connect the controller over Bluetooth or USB-C, and turn **Steam Input** off in Steam.
 
 1. Run **`ACC Trigger Haptics.exe`**.
 2. Click **Install takeover** — this copies a small proxy DLL into the ACC folder,
@@ -32,8 +32,17 @@ do the same install/restore job.
 | --- | --- |
 | Left trigger | Brake pressure; short "tick-tick" when a front wheel locks or ABS kicks in |
 | Right trigger | Throttle pressure; rear wheelspin; understeer (front slipping more than rear) |
-| Left grip | Left-side road texture |
-| Right grip | Right-side road texture |
+| Left grip | Left-side road texture; rear slide / loss of control |
+| Right grip | Right-side road texture; rear slide / loss of control |
+
+Understeer (front push) also requires both front wheels to be actually sliding and a slip-vibration
+confidence, so ordinary cornering and a single front wheel over a kerb stay quiet.
+
+Both grips rumble together when the rear lets go (oversteer, spin, four-wheel drift), getting
+stronger as the slide grows. Only actual wheel slip triggers it; steering input alone does not.
+Low-speed spins count too: the speed gate fades in from 14 to 35 km/h, so a 25 km/h spin still
+reports. Off-track driving without slip is not reported, and a four-wheel lock stays on the
+left-trigger lock pulse.
 
 The brake/throttle floor fades out below 5 km/h, so pressing the pedals at a standstill stays quiet.
 
@@ -41,7 +50,7 @@ The brake/throttle floor fades out below 5 km/h, so pressing the pedals at a sta
 
 ## Tuning
 
-Five sliders in the panel, saved automatically:
+Six sliders in the panel, saved automatically:
 
 | Slider | What it does | Code default |
 | --- | --- | --- |
@@ -50,6 +59,7 @@ Five sliders in the panel, saved automatically:
 | Throttle floor | Right trigger follows throttle | 0.15 |
 | Event strength | Pulse strength for lock / ABS / wheelspin | 0.75 |
 | Understeer gain | Right trigger strength when the front pushes; 0 = off | 1.00 |
+| Loss of control | Both grips when the rear slides / spins; 0 = off | 1.00 |
 
 You can also edit `手感设置.toml` directly (it sits next to the exe).
 Only change the numbers on the right-hand side of `=`.
@@ -59,7 +69,7 @@ Only change the numbers on the right-hand side of `=`.
 ## Panel
 
 - Four status lamps: proxy DLL / controller / ACC telemetry / haptics
-- Five sliders, saved as you drag
+- Six sliders, saved as you drag
 - Start / stop haptics
 - Install / restore the takeover DLL (refuses while ACC is running)
 - Language switch (English / 中文) at the bottom left
@@ -76,7 +86,7 @@ Errors are written to `panel.log` next to the executable.
 
 - Windows 10 / 11
 - Xbox One or Xbox Series controller (Xbox 360 has no trigger motors)
-- **Bluetooth connection** — tested; wired connection untested
+- **Bluetooth or USB-C connection** — both tested
 - **Steam Input must be off**, otherwise it swallows the trigger commands
 - **The takeover DLL must be installed**; disabling in-game vibration alone is not enough
 
@@ -88,7 +98,8 @@ The packaged exe does not require Python.
 
 **No trigger vibration at all**
 Check the "Proxy DLL" lamp first. Without it, ACC overwrites the trigger rumble every frame.
-Also make sure Steam Input is off.
+Also make sure Steam Input is off. If you use USB-C, make sure it is a data cable, not a
+charge-only cable.
 
 **It worked before, but became stuttery after an ACC update**
 Run the takeover install again (the update may have replaced the DLL).
@@ -104,9 +115,11 @@ delete or rename it and the warning goes away.
 
 ## Known limitations
 
-- Rear-end slides (oversteer) are not detected as such; only longitudinal wheelspin is
+- Off-track driving without wheel slip is not reported; the cue is driven by slip angle
+- Low-speed spins fade out below about 14 km/h, so parking-lot manoeuvres stay quiet
+- Four-wheel lock is left to the left-trigger lock pulse, not duplicated on the grips
 - Long sessions, and Bluetooth reconnects, have not been endurance-tested
-- Wired connection and the official wireless adapter are untested
+- The official wireless adapter is untested
 
 ---
 
@@ -124,3 +137,6 @@ python src/panel.py     # graphical panel
 ## License
 
 MIT, see `LICENSE`.
+
+The rear-slide detection is adapted from
+[ACC DualSense Feedback](https://github.com/Adudumax/ACC-DualSense-Feedback) (MIT).

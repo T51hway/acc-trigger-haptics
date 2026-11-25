@@ -52,7 +52,7 @@ def _source_names(trace, key):
 def _tuning_text(tuning):
     return t("cfg_tuning_text", tuning["grip_road"], tuning["trigger_floor"],
              tuning["throttle_floor"], tuning["trigger_event"],
-             tuning["understeer_gain"])
+             tuning["understeer_gain"], tuning["loss_gain"])
 
 
 def _status_line(snap, motors, engine):

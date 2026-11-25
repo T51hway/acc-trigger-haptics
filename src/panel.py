@@ -90,6 +90,7 @@ SLIDERS = (
     ("throttle_floor", "sl_throttle", 0.35),
     ("trigger_event", "sl_event", 1.00),
     ("understeer_gain", "sl_understeer", 1.50),
+    ("loss_gain", "sl_loss", 1.50),
 )
 
 
@@ -572,7 +573,7 @@ class Panel:
             return
         self.log(t("log_saved", values["grip_road"], values["trigger_floor"],
                    values["throttle_floor"], values["trigger_event"],
-                   values["understeer_gain"]))
+                   values["understeer_gain"], values["loss_gain"]))
 
     def _start(self):
         if not proxy_installed():

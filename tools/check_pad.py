@@ -6,10 +6,10 @@
 
 为什么要分通道：
     老的 XInput 只能控制两个握把，够不到扳机。想驱动扳机必须走
-    GameInput / Windows.Gaming.Input / 蓝牙 HID 三者之一。
+    GameInput / Windows.Gaming.Input / HID 0x03 三者之一。
     本脚本按这个顺序试，哪个能用就用哪个：
       GameInput  → 四马达，一次写四个值
-      HID 0x03   → 四马达，只在蓝牙连接下有效（直接往手柄发报文）
+      HID 0x03   → 四马达，蓝牙/有线都可用（靠试写判断，不查能力）
       XInput     → 只有两个握把，够不到扳机
     三条都试完还不行，才算手柄有问题。
 
@@ -346,7 +346,7 @@ class GameInputChannel:
 
 
 # ══════════════════════════════════════════════════════════════════
-# 通道 C：蓝牙 HID 报文 —— 四马达，只在蓝牙连接下有效
+# 通道 C：HID 0x03 报文 —— 四马达，蓝牙/有线都用它
 # ══════════════════════════════════════════════════════════════════
 # 报文格式（9 字节），来自 Xbox 蓝牙手柄的 HID 报告描述符：
 #   [0] 0x03          报告 ID
@@ -446,8 +446,8 @@ def hid_candidates():
 
 
 class HidChannel:
-    name = "蓝牙HID"
-    detail = "HID 输出报文 0x03（9 字节，四马达）"
+    name = "HID 0x03"
+    detail = "HID 输出报文 0x03（9 字节，四马达，蓝牙/有线都用它）"
     can_drive_triggers = True
 
     def __init__(self):
@@ -463,8 +463,8 @@ class HidChannel:
         except Exception as exc:
             return "枚举 HID 设备时出错：%s" % exc
         if not cands:
-            return ("没找到微软手柄的 HID 接口。若手柄是用 USB 线连着，"
-                    "这条通道不适用（它只在蓝牙连接下有效）。")
+            return ("没找到微软手柄的 HID 接口。请确认手柄已连接"
+                    "（蓝牙或 USB-C），并按一下手柄按键激活。")
 
         k32 = ctypes.windll.kernel32
         tried = []
@@ -489,7 +489,8 @@ class HidChannel:
             tried.append("PID %04X 写不进去" % pid)
 
         return ("找到微软设备，但都发不出震动报文（%s）。"
-                "有线连接时这属于正常（有线要用另一种报文格式）。"
+                "先确认 Steam 输入已关闭、其他手柄工具没占着通道；"
+                "如果换了线/口还不行，把 PID 记下来。"
                 % "；".join(tried[:4]))
 
     def _send(self, left_grip, right_grip, left_trigger, right_trigger,
@@ -726,7 +727,7 @@ def main():
     # 三条能驱动扳机的路。按顺序试，并且允许等一会——
     # 手柄闲放着的时候，WGI/GameInput 可能不把它当成可用设备，
     # 按一下才认（参考项目里也有"请按手柄任意键激活"的提示）。
-    order = [("① 蓝牙HID", HidChannel),
+    order = [("① HID 0x03", HidChannel),
              ("② WGI", WgiChannel),
              ("③ GameInput", GameInputChannel)]
     deadline = time.time() + max(0.0, args.wait)
