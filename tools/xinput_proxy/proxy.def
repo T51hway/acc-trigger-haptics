@@ -1,0 +1,11 @@
+LIBRARY xinput1_3
+EXPORTS
+    ; 序号必须和系统那份 xinput1_3.dll 完全一致。
+    ; 它第 1 号是 DllMain，所以真正的函数从 2 开始。
+    XInputGetState                  @2
+    XInputSetState                  @3
+    XInputGetCapabilities           @4
+    XInputEnable                    @5
+    XInputGetDSoundAudioDeviceGuids @6
+    XInputGetBatteryInformation     @7
+    XInputGetKeystroke              @8

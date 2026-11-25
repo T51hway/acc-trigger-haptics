@@ -491,6 +491,8 @@ class HidChannel:
         self.handle = None
         self.path = None
         self.product_id = None
+        self._last_vals = None
+        self._last_send = 0.0
 
     def open(self):
         try:
@@ -516,6 +518,8 @@ class HidChannel:
             if self._send(0, 0, 0, 0):
                 self.path = path
                 self.product_id = pid
+                self._last_vals = None
+                self._last_send = 0.0
                 return None
             k32.CloseHandle(handle)
             self.handle = None
@@ -525,10 +529,12 @@ class HidChannel:
                 "有线连接时这属于正常（有线要用另一种报文格式）。"
                 % "；".join(tried[:4]))
 
-    def _send(self, left_grip, right_grip, left_trigger, right_trigger):
+    def _send(self, left_grip, right_grip, left_trigger, right_trigger,
+              mask=HID_ENABLE_ALL_MOTORS):
+        """mask 是四个马达的使能位：0x0F 全开，0x0C 只开两个扳机。"""
         def level(x):
             return int(max(0.0, min(1.0, float(x))) * 100)
-        packet = bytes([HID_REPORT_ID, HID_ENABLE_ALL_MOTORS,
+        packet = bytes([HID_REPORT_ID, mask,
                         level(left_trigger), level(right_trigger),
                         level(left_grip), level(right_grip),
                         0xFF, 0x00, 0xEB])
@@ -539,7 +545,31 @@ class HidChannel:
 
     def run_motors(self, left_grip=0.0, right_grip=0.0,
                    left_trigger=0.0, right_trigger=0.0):
-        return self._send(left_grip, right_grip, left_trigger, right_trigger)
+        """只在值真的变化时才发报文。
+
+        原因：这个报文里带着脉冲参数，每发一次等于重新起一个脉冲，
+        发得太密会让马达被打断，听感上功率不足。所以：
+          - 值没变 → 不发（最多每 0.5 秒补发一次，防止脉冲到期）
+          - 值变了 → 发，但最快 20Hz（BLE 撑不住更密）
+          - 回零 → 立即发，不受限制（安全相关，绝不能漏）
+        """
+        vals = (float(left_grip), float(right_grip),
+                float(left_trigger), float(right_trigger))
+        now = time.perf_counter()
+
+        if self.handle and self._last_vals is not None and any(vals):
+            biggest = max(abs(a - b) for a, b in zip(vals, self._last_vals))
+            unchanged = biggest < 0.02
+            if unchanged and (now - self._last_send) < 0.5:
+                return True          # 什么都没变，别发
+            if (now - self._last_send) < 0.05:
+                return True          # 太密了，等下一轮
+
+        ok = self._send(*vals)
+        if ok:
+            self._last_vals = vals
+            self._last_send = now
+        return ok
 
     def close(self):
         if self.handle:
@@ -549,6 +579,7 @@ class HidChannel:
                 pass
             ctypes.windll.kernel32.CloseHandle(self.handle)
             self.handle = None
+            self._last_vals = None
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -621,6 +652,233 @@ def demo_compare(lib, info, wgi):
     print("哪一次有感觉？第 1 次（XInput）还是第 2 次（WGI）？")
 
 
+def hold_sequence(driver, total):
+    """持续写入测试：分段震，用来看游戏运行时我们的指令会不会被抢走/打断。
+
+    每段都是 50Hz 连续写，因为真实使用时就是这么写的。
+    """
+    seg = max(6.0, total / 3.0)
+    print("=" * 62)
+    print("持续写入测试（约 %.0f 秒，分三段）" % (seg * 3))
+    print("=" * 62)
+    print()
+    print("10 秒后开始。现在切到 ACC，把车开起来。")
+    for n in range(10, 0, -1):
+        print("    %2d" % n, end="\r")
+        sys.stdout.flush()
+        time.sleep(1.0)
+    print("                    ")
+
+    phases = [
+        ("只震两个扳机（握把写 0）", dict(left_trigger=1.0, right_trigger=1.0)),
+        ("只震左握把（扳机写 0）", dict(left_grip=1.0)),
+        ("四个全开", dict(left_grip=1.0, right_grip=1.0,
+                          left_trigger=1.0, right_trigger=1.0)),
+    ]
+
+    try:
+        for i, (label, kw) in enumerate(phases, 1):
+            print()
+            print("第 %d/3 段：%s —— 持续 %.0f 秒" % (i, label, seg))
+            deadline = time.time() + seg
+            while time.time() < deadline:
+                driver.run_motors(**kw)
+                time.sleep(0.02)          # 约 50Hz
+            driver.run_motors()
+            print("        结束，停 1 秒")
+            time.sleep(1.0)
+    finally:
+        driver.run_motors()
+        print()
+        print("全部结束。")
+
+
+def ab_compare(driver, seconds=5.0):
+    """对比两种发送方式，同一个马达、同样满值，只有写法不同。
+
+    A：走 run_motors 的限速逻辑（值不变就不发）
+    B：绕过限速，每 20ms 硬发一次（旧行为）
+    """
+    if not hasattr(driver, "_send"):
+        print("这个通道不支持对比（需要 HID 通道）。")
+        return
+
+    print("=" * 62)
+    print("发送方式对比：同一个马达（左握把），同样满值 100")
+    print("  A 段 = 值不变就不重复发（新逻辑）")
+    print("  B 段 = 每 20 毫秒硬发一次（旧逻辑）")
+    print("  每段 %.0f 秒，中间停 2 秒" % seconds)
+    print("=" * 62)
+    print()
+    print("3 秒后开始，把手柄拿在左手上。")
+    for n in (3, 2, 1):
+        print("    %d" % n, end="\r")
+        sys.stdout.flush()
+        time.sleep(1.0)
+    print("                    ")
+
+    try:
+        print()
+        print(">>> A 段 开始")
+        sys.stdout.flush()
+        end = time.time() + seconds
+        asked = 0
+        while time.time() < end:
+            driver.run_motors(left_grip=1.0)
+            asked += 1
+            time.sleep(0.02)
+        driver.run_motors()
+        print("    A 段结束（请求了 %d 次，实际合并后只发了几次）" % asked)
+        time.sleep(2.0)
+
+        print()
+        print(">>> B 段 开始")
+        sys.stdout.flush()
+        end = time.time() + seconds
+        sent = 0
+        while time.time() < end:
+            driver._send(1.0, 0.0, 0.0, 0.0)
+            sent += 1
+            time.sleep(0.02)
+        driver._send(0.0, 0.0, 0.0, 0.0)
+        print("    B 段结束（硬发了 %d 次）" % sent)
+    finally:
+        try:
+            driver._send(0.0, 0.0, 0.0, 0.0)
+        except Exception:
+            pass
+
+    print()
+    print("哪一段更稳、更猛？A 还是 B？")
+
+
+def mask_test(driver):
+    """测试报文的"使能掩码"能不能只驱动扳机、完全不碰握把。
+
+    如果能，那就没必要整体接管四个马达 —— ACC 的握把震动可以留着，
+    两边各管各的，冲突根本不存在。
+    """
+    if not hasattr(driver, "_send"):
+        print("这个通道不支持掩码测试（需要 HID 通道）。")
+        return
+
+    print("=" * 62)
+    print("掩码测试：能不能只震动扳机、不碰握把")
+    print("=" * 62)
+    print()
+    print("前提：ACC 开着、在赛道上、游戏内震动是【打开】的状态。")
+    print("每段 6 秒，中间停 2 秒。")
+    print()
+    print("3 秒后开始。")
+    for n in (3, 2, 1):
+        print("    %d" % n, end="\r")
+        sys.stdout.flush()
+        time.sleep(1.0)
+    print("                    ")
+
+    try:
+        print()
+        print(">>> 第 1 段：掩码 0x0F（四个全开），只给扳机 100")
+        print("    预期：扳机震，握把被清零 → ACC 的路面震动**消失**")
+        sys.stdout.flush()
+        end = time.time() + 6.0
+        while time.time() < end:
+            driver._send(0.0, 0.0, 1.0, 1.0, mask=0x0F)
+            time.sleep(0.05)
+        driver._send(0.0, 0.0, 0.0, 0.0)
+        time.sleep(2.0)
+
+        print()
+        print(">>> 第 2 段：掩码 0x0C（只开两个扳机），只给扳机 100")
+        print("    要观察：扳机震的同时，握把的 ACC 路面震动**还在不在**")
+        print("    在  → 掩码能隔离，方案成立，不用关游戏内震动")
+        print("    没了→ 掩码不能隔离，那就得靠关掉 ACC 的震动")
+        sys.stdout.flush()
+        end = time.time() + 6.0
+        while time.time() < end:
+            driver._send(0.0, 0.0, 1.0, 1.0, mask=0x0C)
+            time.sleep(0.05)
+        driver._send(0.0, 0.0, 0.0, 0.0, mask=0x0C)
+    finally:
+        try:
+            driver._send(0.0, 0.0, 0.0, 0.0)
+        except Exception:
+            pass
+
+    print()
+    print("第 2 段的时候，握把还有没有 ACC 的震动？")
+
+
+def boost_priority():
+    """把自己提到「高于正常」优先级。
+
+    全屏游戏会抢走大量 CPU，后台的写报文循环如果被压到很低频，
+    表现出来就是震动断续。
+    """
+    try:
+        k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        k32.GetCurrentProcess.restype = ctypes.c_void_p   # 不声明会被截成 32 位
+        k32.SetPriorityClass.argtypes = [ctypes.c_void_p, ctypes.c_uint32]
+        k32.SetPriorityClass.restype = ctypes.c_int
+        handle = k32.GetCurrentProcess()
+        ABOVE_NORMAL_PRIORITY_CLASS = 0x00008000
+        ok = bool(k32.SetPriorityClass(handle, ABOVE_NORMAL_PRIORITY_CLASS))
+        if not ok:
+            print("    （优先级设置被拒绝，错误码 %d）" % ctypes.get_last_error())
+        return ok
+    except Exception as exc:
+        print("    （优先级设置失败：%s）" % exc)
+        return False
+
+
+def rate_test(driver):
+    """同一个扳机、同样满值，只改发送频率，看断续是不是"写得不够勤"造成的。"""
+    if not hasattr(driver, "_send"):
+        print("这个通道不支持频率测试（需要 HID 通道）。")
+        return
+
+    got = boost_priority()
+    print("=" * 62)
+    print("发送频率测试：两个扳机满值，依次用不同频率写")
+    print("=" * 62)
+    print("进程优先级已提升：%s" % ("是" if got else "否（被系统拒绝）"))
+    print()
+    print("ACC 开着跑这个测试（就在赛道上停着也行）。")
+    print("每段 6 秒，中间停 2 秒。注意扳机是「稳」还是「断续」。")
+    print()
+    print("3 秒后开始。")
+    for n in (3, 2, 1):
+        print("    %d" % n, end="\r")
+        sys.stdout.flush()
+        time.sleep(1.0)
+    print("                    ")
+
+    try:
+        for hz in (60, 120, 200):
+            interval = 1.0 / hz
+            print()
+            print(">>> %d Hz —— 6 秒" % hz)
+            sys.stdout.flush()
+            end = time.time() + 6.0
+            sends = 0
+            while time.time() < end:
+                driver._send(0.0, 0.0, 1.0, 1.0)
+                sends += 1
+                time.sleep(interval)
+            driver._send(0.0, 0.0, 0.0, 0.0)
+            print("    结束（这 6 秒里实际发出 %d 次，目标 %d 次）"
+                  % (sends, int(6 * hz)))
+            time.sleep(2.0)
+    finally:
+        try:
+            driver._send(0.0, 0.0, 0.0, 0.0)
+        except Exception:
+            pass
+
+    print()
+    print("哪一段最稳？60 / 120 / 200？")
+
+
 def run_steps(channel):
     """四步走完，或者走到接口的天花板为止。"""
     steps = [
@@ -664,6 +922,14 @@ def main():
                     help="四步走完后，再用 XInput 震两下握把做对照")
     ap.add_argument("--demo", action="store_true",
                     help="跳过四步，只做长震对照（XInput 3 秒 / WGI 3 秒）")
+    ap.add_argument("--hold", type=float, default=0, metavar="秒",
+                    help="持续写入测试：分三段连续震，用来看游戏运行时会不会抢")
+    ap.add_argument("--ab", action="store_true",
+                    help="对比两种发送方式的震感（值不变不重发 vs 每 20ms 硬发）")
+    ap.add_argument("--mask", action="store_true",
+                    help="测试使能掩码能不能只驱动扳机、不碰握把")
+    ap.add_argument("--rate", action="store_true",
+                    help="发送频率测试：20 / 60 / 120 Hz 各 6 秒，看断续")
     args = ap.parse_args()
 
     try:
@@ -752,6 +1018,38 @@ def main():
     if args.demo and info is not None and driver.name == "WGI":
         try:
             demo_compare(lib, info, driver)
+        finally:
+            driver.close()
+        return
+
+    # --rate：发送频率测试
+    if args.rate:
+        try:
+            rate_test(driver)
+        finally:
+            driver.close()
+        return
+
+    # --mask：测试使能掩码能否只驱动扳机
+    if args.mask:
+        try:
+            mask_test(driver)
+        finally:
+            driver.close()
+        return
+
+    # --ab：对比两种发送方式的震感
+    if args.ab:
+        try:
+            ab_compare(driver)
+        finally:
+            driver.close()
+        return
+
+    # --hold：持续写入，验证游戏运行时会不会被抢
+    if args.hold:
+        try:
+            hold_sequence(driver, args.hold)
         finally:
             driver.close()
         return
