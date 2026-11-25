@@ -321,7 +321,8 @@ class Panel:
         self._write_job = None
         self._closing = False
 
-        root.title("ACC Trigger Haptics %s" % VERSION)
+        root.title("ACC Trigger Haptics")
+        root.minsize(620, 1)
         root.resizable(False, False)
         root.protocol("WM_DELETE_WINDOW", self.close)
 
@@ -426,6 +427,10 @@ class Panel:
                                       justify="left", foreground=C_GRAY)
         self.status_label.grid(row=4, column=0, columnspan=3, sticky="w",
                                pady=(12, 0))
+
+        # 版本号常驻右下角：标题栏放不下，日志里也有
+        ttk.Label(frame, text="v%s" % VERSION, foreground=C_GRAY).grid(
+            row=5, column=0, columnspan=3, sticky="e")
 
         self._refresh_proxy_lamp()
 
