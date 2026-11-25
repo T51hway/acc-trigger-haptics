@@ -135,9 +135,20 @@ trigger_event = %(trigger_event).2f   # 扳机事件：锁死 / ABS / 后轮打�
 """ % DEFAULT_TUNING
 
 
+def application_dir():
+    """程序"自己的"目录：源码运行时是仓库根目录；打包成 exe 后是 exe 所在目录。
+
+    打包后 __file__ 指向 PyInstaller 的临时解压目录，不能再用它找设置文件，
+    否则 exe 会去临时目录读一个不存在的配置。
+    """
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent
+    return Path(__file__).resolve().parent.parent
+
+
 def config_path():
-    """手感设置放在仓库根目录，和 bat 同级，方便找。"""
-    return Path(__file__).resolve().parent.parent / CONFIG_NAME
+    """手感设置放在程序目录，和 bat / exe 同级，方便找。"""
+    return application_dir() / CONFIG_NAME
 
 
 def load_tuning(path=None):

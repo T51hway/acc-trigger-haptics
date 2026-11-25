@@ -43,8 +43,25 @@ from haptics_engine import (                               # noqa: E402
 )
 from pad_driver import PadBusy, PadDriver                  # noqa: E402
 
-LOG_PATH = ROOT / "panel.log"
-PROXY_DLL = ROOT / "tools" / "xinput_proxy" / "xinput1_3.dll"
+
+def _app_dir():
+    """exe 所在目录（源码运行时是仓库根目录）。设置、日志都放这儿。"""
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent
+    return ROOT
+
+
+def _bundle_dir():
+    """打包后资源所在的临时目录；源码运行时就是仓库根目录。"""
+    base = getattr(sys, "_MEIPASS", None)
+    return Path(base) if base else ROOT
+
+
+APP_DIR = _app_dir()
+BUNDLE_DIR = _bundle_dir()
+LOG_PATH = APP_DIR / "panel.log"
+PROXY_SOURCE = BUNDLE_DIR / "tools" / "xinput_proxy" / "xinput1_3.dll"
+PROXY_LOCAL = APP_DIR / "tools" / "xinput_proxy" / "xinput1_3.dll"   # 兜底
 
 # 和 开启接管.bat 用同一份候选路径：先找到的都行
 ACC_CANDIDATES = (
@@ -449,11 +466,12 @@ class Panel:
             messagebox.showwarning("ACC 正在运行", "游戏里加载着这个 DLL，改不动。\n"
                                    "请先完全退出 ACC，再点一次。")
             return
-        if not PROXY_DLL.exists():
+        if not PROXY_SOURCE.exists() and not PROXY_LOCAL.exists():
             messagebox.showerror("文件缺失", "找不到 tools\\xinput_proxy\\xinput1_3.dll。")
             return
+        source = PROXY_SOURCE if PROXY_SOURCE.exists() else PROXY_LOCAL
         try:
-            shutil.copy2(PROXY_DLL, folder / "xinput1_3.dll")
+            shutil.copy2(source, folder / "xinput1_3.dll")
         except PermissionError:
             messagebox.showerror("写入被拒绝", "复制失败，文件可能被占用。\n"
                                  "请确认 ACC 已完全退出；仍失败就右键以管理员身份运行。")

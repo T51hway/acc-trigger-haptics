@@ -25,6 +25,7 @@ wheels/
 venv/
 ENV/
 env/
+.venv-build/
 
 # PyInstaller
 *.spec
@@ -72,3 +73,6 @@ docs/captures/
 # 个人手感设置（可调参数，不进仓库）
 手感设置.toml
 *.toml.tmp
+
+# 打包产物（由 PyInstaller 生成，不进仓库）
+ACC震动面板.exe

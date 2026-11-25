@@ -121,6 +121,22 @@ XSX / Xbox One 手柄在 ACC 里四个马达全部有活儿干：
 > 面板需要带 tkinter 的完整 Python（本机是用 uv 装的 3.13.3），路径写在本机专用的 bat 里。
 > 出错时看仓库根目录的 `panel.log`。
 
+### 打包成 exe（可选）
+
+也可以不依赖 Python：用 PyInstaller 打成单文件 exe，双击即用，启动约 1 秒、体积约 10MB。
+
+```
+.venv-build\Scripts\python.exe -m PyInstaller --noconfirm --clean --onefile --windowed ^
+    --name ACC-Panel --paths src ^
+    --add-data "tools\xinput_proxy\xinput1_3.dll;tools\xinput_proxy" src\panel.py
+```
+
+然后把 `dist\ACC-Panel.exe` 复制到仓库根目录、改名 `ACC震动面板.exe`。
+**exe 必须和 `手感设置.toml` 放在同一层**——它按自己所在的目录找配置，找不到就用默认值。
+（打包后 `__file__` 指向临时解压目录，所以代码里用 `sys.frozen` 区分了两种情形。）
+
+exe 和 bat 是两条并行入口，随时可以只用其中一个。
+
 ---
 
 ## 环境要求
