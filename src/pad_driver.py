@@ -34,6 +34,7 @@
     3. 回零必须立刻发，不等下一个节拍；stop() / 异常退出一定清零。
     4. 蓝牙会掉。断开后每秒重试，连上后自动接着写。
     5. 同一时间只允许一个写入者（两个会互相打断），用命名互斥体挡住。
+    6. 点窗口 ×、注销、关机时 atexit 不会跑，用 SetConsoleCtrlHandler 抢一包零。
 
 用法：
     from pad_driver import PadDriver
@@ -82,6 +83,12 @@ WIRELESS_ADAPTER_PID = 0x0B00    # 045E:0B00 是无线适配器，不是手柄
 
 MUTEX_NAME = "Local\\acc-pad-haptics.motor-writer"
 ERROR_ALREADY_EXISTS = 183
+
+# 控制台退出事件（SetConsoleCtrlHandler）
+CTRL_CLOSE_EVENT = 2
+CTRL_LOGOFF_EVENT = 5
+CTRL_SHUTDOWN_EVENT = 6
+CONSOLE_CLEANUP_EVENTS = (CTRL_CLOSE_EVENT, CTRL_LOGOFF_EVENT, CTRL_SHUTDOWN_EVENT)
 
 GUID_DEVINTERFACE_HID = "4D1E55B2-F16F-11CF-88CB-001111000030"
 DIGCF_PRESENT = 0x02
@@ -146,6 +153,10 @@ _k32.GetCurrentProcess.argtypes = []
 _k32.GetCurrentProcess.restype = wintypes.HANDLE
 _k32.SetPriorityClass.argtypes = [wintypes.HANDLE, wintypes.DWORD]
 _k32.SetPriorityClass.restype = wintypes.BOOL
+
+_PHANDLER_ROUTINE = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.DWORD)
+_k32.SetConsoleCtrlHandler.argtypes = [_PHANDLER_ROUTINE, wintypes.BOOL]
+_k32.SetConsoleCtrlHandler.restype = wintypes.BOOL
 
 _setupapi = ctypes.WinDLL("setupapi", use_last_error=True)
 _setupapi.SetupDiGetClassDevsW.argtypes = [ctypes.POINTER(GUID), wintypes.LPCWSTR,
@@ -330,6 +341,7 @@ class PadDriver:
         self._next_connect_at = 0.0
         self._next_error_report = 0.0
         self._atexit_registered = False
+        self._ctrl_handler = None
 
     # ── 对外接口 ──────────────────────────────────────────────────
     def start(self, wait=0.0):
@@ -374,6 +386,7 @@ class PadDriver:
             if not self._atexit_registered:
                 atexit.register(self.stop)
                 self._atexit_registered = True
+            self._install_close_handler()
         except BaseException:
             self._release_instance_lock()
             raise
@@ -417,6 +430,7 @@ class PadDriver:
         self._last_sent = None
         with self._cond:
             self._target = (0.0, 0.0, 0.0, 0.0)
+        self._uninstall_close_handler()
         self._release_instance_lock()
 
         if self._atexit_registered:
@@ -565,6 +579,46 @@ class PadDriver:
         if self._mutex is not None:
             _close_handle(self._mutex)
             self._mutex = None
+
+    # ── 控制台退出 ────────────────────────────────────────────────
+    def _install_close_handler(self):
+        """点窗口 ×、注销、关机时，atexit 不会跑，这里抢一包零。
+
+        注册失败不影响主功能（例如 pythonw 启动时没有控制台）。
+        """
+        if self._ctrl_handler is not None:
+            return
+        try:
+            self._ctrl_handler = _PHANDLER_ROUTINE(self._on_console_event)
+            if not _k32.SetConsoleCtrlHandler(self._ctrl_handler, True):
+                self._ctrl_handler = None
+        except Exception:
+            self._ctrl_handler = None
+
+    def _uninstall_close_handler(self):
+        if self._ctrl_handler is None:
+            return
+        try:
+            _k32.SetConsoleCtrlHandler(self._ctrl_handler, False)
+        except Exception:
+            pass
+        self._ctrl_handler = None
+
+    def _on_console_event(self, event):
+        """系统线程里跑：只做最少的事，别跟主线程抢着收尾。"""
+        if event not in CONSOLE_CLEANUP_EVENTS:
+            return False
+        # 先叫停写入循环，等可能正在写的那一拍走完，再补一包零。
+        with self._cond:
+            self._stopping = True
+            self._cond.notify_all()
+        time.sleep(0.05)
+        if self._handle is not None:
+            try:
+                self._write_levels((0, 0, 0, 0))
+            except Exception:
+                pass
+        return False
 
     # ── 日志 ──────────────────────────────────────────────────────
     def _say(self, text):
