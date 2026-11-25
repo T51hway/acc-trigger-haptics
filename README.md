@@ -112,10 +112,21 @@ XSX / Xbox One 手柄在 ACC 里四个马达全部有活儿干：
 
 ---
 
+## 控制面板（可选）
+
+双击 **`启动面板.bat`** 可以改用图形界面：四盏状态灯（代理 DLL / 手柄 / ACC 遥测 / 震动）、
+四个滑块（拖动即保存）、开始 / 停止震动，以及代理 DLL 的一键装卸。
+它和 `调手感.bat` 改的是同一个文件，两种方式都能用。
+
+> 面板需要带 tkinter 的完整 Python（本机是用 uv 装的 3.13.3），路径写在本机专用的 bat 里。
+> 出错时看仓库根目录的 `panel.log`。
+
+---
+
 ## 环境要求
 
 - Windows 10 / 11
-- Python 3.8 以上
+- Python 3.11 以上（用到 `tomllib`）；控制面板还需要带 tkinter 的完整 Python
 - Xbox One S / Xbox Series X|S / Xbox Elite Series 2 手柄
   （**Xbox 360 手柄没有扳机马达**，不适用）
 - **蓝牙连接已实测可用**；有线与官方无线适配器未实测
@@ -141,7 +152,8 @@ acc-pad-haptics/
 │   ├─ main.py           # 主循环：60Hz 把三层接起来
 │   ├─ pad_driver.py      # 马达驱动层：60Hz 蓝牙 HID，断线重连、单实例、退出清零
 │   ├─ acc_telemetry.py   # ACC 遥测层：读共享内存，交出最新快照
-│   └─ haptics_engine.py  # 判断与混音层：遥测快照 → 四个马达值
+│   ├─ haptics_engine.py  # 判断与混音层：遥测快照 → 四个马达值
+│   └─ panel.py           # 控制面板：状态灯 + 滑块 + 起停 + 代理装卸
 └─ tools/
     ├─ check_acc.py       # 读 ACC 共享内存，摸清字段量纲和范围
     ├─ check_pad.py       # 四马达验证（HID → WGI → GameInput → XInput）
