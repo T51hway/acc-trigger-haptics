@@ -61,7 +61,4 @@ docs/captures/
 # 注意：开启接管.bat / 恢复原生.bat 不依赖 Python，是要进仓库的，别加到这里
 手柄测试.bat
 采集数据.bat
-持续震动.bat
-写入对比.bat
-掩码测试.bat
 频率测试.bat
