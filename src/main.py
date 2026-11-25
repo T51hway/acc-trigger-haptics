@@ -48,21 +48,19 @@ def _source_names(trace, key):
 
 
 def _tuning_text(tuning):
-    return ("路面 %.2f ｜ 路肩 %.2f ｜ 底层 %.2f ｜ 事件 %.2f"
-            % (tuning["grip_road"], tuning["grip_kerb"],
-               tuning["trigger_floor"], tuning["trigger_event"]))
+    return ("路面 %.2f ｜ 刹车底层 %.2f ｜ 油门底层 %.2f ｜ 事件 %.2f"
+            % (tuning["grip_road"], tuning["trigger_floor"],
+               tuning["throttle_floor"], tuning["trigger_event"]))
 
 
 def _status_line(snap, motors, engine):
     trace = engine.last_trace
     metrics = engine.last_metrics or {}
     abs_on = 1 if (snap.abs_level > 0.05 or abs(snap.abs_vibrations) > 0.05) else 0
-    return ("[%07d] %6.1f km/h  档 %-2s  刹车 %.2f  ABS %d  "
-            "路肩峰 %.2f 偏 %+.2f  |  "
+    return ("[%07d] %6.1f km/h  档 %-2s  刹车 %.2f  油门 %.2f  ABS %d  |  "
             "扳机 %3.0f/%3.0f  握把峰 %3.0f/%3.0f  |  左 %s ｜ 右 %s"
             % (snap.packet_id, snap.speed_kmh, snap.gear_label, snap.brake,
-               abs_on, metrics.get("kerb_peak", 0.0),
-               metrics.get("kerb_bias", 0.0),
+               snap.throttle, abs_on,
                motors.left_trigger * 100.0, motors.right_trigger * 100.0,
                metrics.get("grip_peak_left", 0.0) * 100.0,
                metrics.get("grip_peak_right", 0.0) * 100.0,

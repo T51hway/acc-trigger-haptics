@@ -74,8 +74,7 @@ ACC_CANDIDATES = (
 
 # 滑块：(键, 显示名, 上限)。上限只是"拖到头"的位置，不改变程序里的合法范围。
 SLIDERS = (
-    ("grip_road", "路面纹理", 3.0),
-    ("grip_kerb", "路肩", 3.0),
+    ("grip_road", "路面纹理", 0.80),
     ("trigger_floor", "刹车底层", 0.50),
     ("throttle_floor", "油门底层", 0.35),
     ("trigger_event", "事件强度", 1.00),
@@ -444,9 +443,9 @@ class Panel:
         except Exception as exc:
             self.log("保存手感失败：%s" % exc)
             return
-        self.log("手感已保存：路面 %.2f ｜ 路肩 %.2f ｜ 底层 %.2f ｜ 事件 %.2f"
-                 % (values["grip_road"], values["grip_kerb"],
-                    values["trigger_floor"], values["trigger_event"]))
+        self.log("手感已保存：路面 %.2f ｜ 刹车底层 %.2f ｜ 油门底层 %.2f ｜ 事件 %.2f"
+                 % (values["grip_road"], values["trigger_floor"],
+                    values["throttle_floor"], values["trigger_event"]))
 
     def _start(self):
         if not proxy_installed():

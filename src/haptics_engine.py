@@ -9,7 +9,7 @@
 
 分工（设计说明.md D4）：
     扳机 ← 短促、突然、要立刻反应的事（锁死、打滑、ABS 介入）
-    握把 ← 持续、厚重、提供方位感的事（路面、路肩）
+    握把 ← 持续、厚重、提供方位感的事（路面纹理）
 
 两层（D5）：
     底层：刹车压力 × 20%（左扳机）、油门压力 × 15%（右扳机）。
@@ -83,16 +83,10 @@ REAR_RELEASE = 0.100             # 收振时间 100ms
 
 ABS_GATE = 0.05                  # abs / absVibrations 超过它才算"ABS 在动作"
 
-GRIP_ROAD_WEIGHT = 1.00          # 路面纹理在握把上的权重
+GRIP_ROAD_WEIGHT = 0.21          # 路面纹理基准（2026-11-25 从 1.00 降下来：原标度整体偏大）
 GRIP_ROAD_CURVE = 0.50           # 轻纹理抬升（越小越明显）
-GRIP_KERB_WEIGHT = 1.15          # 路肩在握把上的权重
-KERB_SIDE_BASE = 0.80            # 路肩在两侧的基础占比
-KERB_SIDE_SPAN = 0.25            # 轮荷差带来的左右偏移（最大 1.05 : 0.55）
-KERB_HOLD = 0.30                 # 路肩峰值保持 300ms：大马达起转慢，短促脉冲它跟不上
 G_VIBRATION_DEADZONE = 0.05      # gVibrations 不设死区就是永远在震（实测 91.5% 的帧 >0.02）
 G_VIBRATION_FULL = 7.5           # 实测上限
-KERB_DEADZONE = 0.005
-KERB_FULL = 0.10                 # kerbVibration 被截断在 ±0.1
 
 SECONDARY_CAP = 0.25             # 辅效果封顶 25%（D11）
 SOFT_KNEE = 0.70                 # 软限幅的拐点，拐点以下不动
@@ -106,14 +100,12 @@ MIX_FLOOR = 0.002                # 小于这个的贡献当作没有（报文本
 # 闭眼测试有结论了再往外放，免得一次给太多旋钮反而不知道动哪个。
 DEFAULT_TUNING = {
     "grip_road": GRIP_ROAD_WEIGHT,
-    "grip_kerb": GRIP_KERB_WEIGHT,
     "trigger_floor": PRESSURE_FLOOR_MAX,
     "throttle_floor": THROTTLE_FLOOR_MAX,
     "trigger_event": EVENT_AMPLITUDE,
 }
 TUNING_RANGES = {
-    "grip_road": (0.0, 6.0),
-    "grip_kerb": (0.0, 6.0),
+    "grip_road": (0.0, 0.80),
     "trigger_floor": (0.0, 0.50),
     "throttle_floor": (0.0, 0.35),
     "trigger_event": (0.0, 1.0),
@@ -124,11 +116,10 @@ CONFIG_TEMPLATE = """# ACC 手柄震动 · 手感设置
 #
 # 只改等号 = 右边的数字。# 后面是说明，改了不会生效。
 # 改完保存：程序每秒检查一次，1 秒内生效，不用重启。
-# 增益类：1.0 是基准，越大越强（0 ~ 6）。
-# 注意：超过 2.0 容易把马达顶满，左右差别会被抹平。
+# 强度类：数字越大越强。路面纹理 0.21 左右是基准（实测手感）。
+# 注意：超过 0.6 容易把马达顶满，差别会被抹平。
 
 grip_road = %(grip_road).2f      # 握把·路面纹理
-grip_kerb = %(grip_kerb).2f      # 握把·路肩
 
 # 左扳机：刹车压力底层（0 ~ 0.35 比较合理，代码上限 0.50）。D5 基准 0.20；
 # 调高更有实感，但锁死 / ABS 的对比会变弱。
@@ -272,28 +263,6 @@ def _mix(contributions):
     return _soft_clip(total), used
 
 
-def _load_bias(loads, travels):
-    """左右差，-1~1。用来给路肩分个左右。
-
-    优先用轮荷；ACC 停车时轮荷会读 0，行驶时也可能拿不到，
-    这时退回悬挂行程差：压路肩那侧会压缩，行程更大。
-    注意：这只是个便宜的启发式，弯道外侧也会更重，阶段 3 再校。
-    """
-    values = [_num(v) for v in loads]
-    total = sum(values)
-    if total > 1.0:
-        left = (values[0] + values[2]) / total
-        return max(-1.0, min(1.0, (left - 0.5) * 4.0))
-
-    travel = [_num(v) for v in travels]
-    left_travel = travel[0] + travel[2]
-    right_travel = travel[1] + travel[3]
-    total_travel = left_travel + right_travel
-    if total_travel <= 1e-6:
-        return 0.0
-    return max(-1.0, min(1.0, (left_travel - right_travel) / total_travel * 4.0))
-
-
 class HapticsEngine:
     """把一帧遥测变成四个马达值。有状态：事件包络、不应期、打滑收放。"""
 
@@ -304,9 +273,6 @@ class HapticsEngine:
         self._event_start = -1e9
         self._abs_start = -1e9
         self._rear_level = 0.0
-        self._kerb_level = 0.0
-        self._kerb_peak = 0.0
-        self._kerb_bias = 0.0
         self._grip_peak = [0.0, 0.0]
         self._last_update = None
         self.last_trace = {}
@@ -326,9 +292,6 @@ class HapticsEngine:
         self._event_start = -1e9
         self._abs_start = -1e9
         self._rear_level = 0.0
-        self._kerb_level = 0.0
-        self._kerb_peak = 0.0
-        self._kerb_bias = 0.0
         self._grip_peak = [0.0, 0.0]
         self._last_update = None
         self.last_trace = {}
@@ -347,31 +310,13 @@ class HapticsEngine:
         first_tick = self._last_update is None
         self._last_update = now
 
-        bias = _load_bias(snap.wheel_load, snap.suspension_travel)
         road = _scale(_num(snap.g_vibrations),
                       G_VIBRATION_DEADZONE, G_VIBRATION_FULL) ** GRIP_ROAD_CURVE
-        kerb_now = _scale(abs(_num(snap.kerb_vibration)), KERB_DEADZONE, KERB_FULL)
-        # 路肩是短促尖峰，大马达起转慢，跟不上 6ms 的脉冲。
-        # 做 300ms 峰值保持：压上去就是一段清楚的震动，而不是一下"咔"。
-        if kerb_now >= self._kerb_level:
-            self._kerb_level = kerb_now
-            self._kerb_bias = bias      # 峰值那一刻的左右方向，保持住
-        else:
-            self._kerb_level = max(kerb_now, self._kerb_level - dt / KERB_HOLD)
-        # 另外留一个 1 秒峰值，只给 --status 看，方便确认信号有没有来
-        self._kerb_peak = max(kerb_now, self._kerb_peak - dt / 1.0)
-        kerb = self._kerb_level
-        left_share = KERB_SIDE_BASE + KERB_SIDE_SPAN * self._kerb_bias
-        right_share = KERB_SIDE_BASE - KERB_SIDE_SPAN * self._kerb_bias
 
-        left_grip, left_grip_trace = _mix([
-            ("路面", road * self.tuning["grip_road"]),
-            ("左路肩", kerb * left_share * self.tuning["grip_kerb"]),
-        ])
-        right_grip, right_grip_trace = _mix([
-            ("路面", road * self.tuning["grip_road"]),
-            ("右路肩", kerb * right_share * self.tuning["grip_kerb"]),
-        ])
+        # 握把只剩路面纹理（路肩通道 2026-11-25 移除：用户用不上，
+        # 而且它会和路面抢同一个马达的预算）
+        left_grip, left_grip_trace = _mix([("路面", road * self.tuning["grip_road"])])
+        right_grip, right_grip_trace = _mix([("路面", road * self.tuning["grip_road"])])
         # 最近 1 秒的握把峰值，只给 --status 看：1Hz 打一行很容易错过短事件
         self._grip_peak[0] = max(left_grip, self._grip_peak[0] - dt / 1.0)
         self._grip_peak[1] = max(right_grip, self._grip_peak[1] - dt / 1.0)
@@ -448,12 +393,8 @@ class HapticsEngine:
             "abs_flag": abs_flag,
             "abs_pulse": abs_pulse,
             "road": road,
-            "kerb": kerb,
-            "kerb_peak": self._kerb_peak,
-            "kerb_bias": self._kerb_bias,
             "grip_peak_left": self._grip_peak[0],
             "grip_peak_right": self._grip_peak[1],
-            "load_bias": bias,
         }
 
         return Motors(
@@ -538,10 +479,7 @@ def main():
                              slip_ratio=(-0.05, -0.05, 0.02, 0.02))),
         ("后轮打滑 0.50", dict(throttle=1.0, slip_ratio=(-0.02, -0.02, 0.50, 0.45))),
         ("全油门直道，不打滑", dict(throttle=1.0, slip_ratio=(0.01, 0.01, 0.02, 0.02))),
-        ("压左路肩", dict(g_vibrations=2.0, kerb_vibration=0.06,
-                         wheel_load=(4000.0, 2600.0, 3600.0, 2400.0))),
-        ("压右路肩", dict(g_vibrations=2.0, kerb_vibration=-0.06,
-                         wheel_load=(2600.0, 4000.0, 2400.0, 3600.0))),
+        ("路面纹理较重", dict(g_vibrations=2.0)),
     ]
 
     for label, changes in cases:
@@ -558,7 +496,7 @@ def main():
     print("  ABS 动作    左扳机 90% 上下，来源是“ABS 介入 + 刹车压力”")
     print("  后轮打滑    右扳机跟着滑移量走，滑得越多越强")
     print("  全油门直道  右扳机约 15%（油门底层），滑起来会更强")
-    print("  压路肩      两侧握把都有，压到的那一侧更强")
+    print("  路面纹理重  两侧握把一起震，强度跟路面基准走")
     print()
     print("想调强度：双击 调手感.bat，改完保存，1 秒内生效。")
 
