@@ -18,6 +18,20 @@ motors: grips for road feel, triggers for braking, throttle and tyre limits.
 
 ---
 
+## Safety
+
+The program is not code-signed, so Windows may warn that the publisher is unknown. That is expected.
+
+- exe SHA256: `4e4482472f3b62f87246e50194903a372bc64e93bd57e0fdf6c3069cb45a6cd0`
+- Proxy DLL SHA256: `8e284775850c9cba345b2b9912a71a45050f84c9186a0387387f5105cd4afe6c`
+- Multi-engine scan (VirScan, 30 engines): [exe](https://www.virscan.org/report/4e4482472f3b62f87246e50194903a372bc64e93bd57e0fdf6c3069cb45a6cd0) · [proxy DLL](https://www.virscan.org/report/8e284775850c9cba345b2b9912a71a45050f84c9186a0387387f5105cd4afe6c)
+- The proxy DLL is ~60 lines of C: [`proxy.c`](tools/xinput_proxy/proxy.c); build command in the README next to it
+- After downloading, double-click `校验哈希.bat` ("verify hash"): it compares the fingerprint above and tells you whether it matches (the exe only for a release-only download; the proxy DLL too when running from source)
+
+If you can reach VirusTotal, you can upload the same file yourself and compare it with the SHA256 above.
+
+---
+
 ## What it gives you, what it takes away
 
 **It gives you:**

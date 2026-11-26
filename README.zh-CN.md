@@ -16,6 +16,20 @@
 
 ---
 
+## 安全性
+
+程序没有数字签名，Windows 可能提示「未知发布者」，这是正常的。
+
+- exe 指纹（SHA256）：`4e4482472f3b62f87246e50194903a372bc64e93bd57e0fdf6c3069cb45a6cd0`
+- 代理 DLL 指纹（SHA256）：`8e284775850c9cba345b2b9912a71a45050f84c9186a0387387f5105cd4afe6c`
+- 多引擎扫描结果（VirScan，30 个引擎）：[exe](https://www.virscan.org/report/4e4482472f3b62f87246e50194903a372bc64e93bd57e0fdf6c3069cb45a6cd0) · [代理 DLL](https://www.virscan.org/report/8e284775850c9cba345b2b9912a71a45050f84c9186a0387387f5105cd4afe6c)
+- 代理 DLL 只有 60 行 C 源码：[`proxy.c`](tools/xinput_proxy/proxy.c)，编译命令在同目录的 README
+- 下载后双击 `校验哈希.bat`，它会比对上面的指纹并告诉你是否一致（只下载 exe 时校验 exe；从源码使用时会连代理 DLL 一起校验）
+
+如果能访问 VirusTotal，也可以自己上传同一个文件，和上面的指纹对照。
+
+---
+
 ## 它会给你什么，会拿走什么
 
 **给你：**
