@@ -33,7 +33,8 @@ MESSAGES = {
 
     # ── 面板：分组与控件 ──────────────────────────────────────────
     "group_status": ("状态", "Status"),
-    "group_tuning": ("手感（拖动即保存）", "Feel (drag to save)"),
+    "group_tuning": ("手感（拖动或输入，自动保存）",
+                     "Feel (drag or type, autosaves)"),
     "sl_road": ("路面纹理", "Road texture"),
     "sl_brake": ("刹车底层", "Brake floor"),
     "sl_throttle": ("油门底层", "Throttle floor"),
@@ -49,8 +50,14 @@ MESSAGES = {
     # ── 面板：提示与日志 ──────────────────────────────────────────
     "log_started": ("面板已启动 v%s", "Panel started v%s"),
     "log_exit": ("面板退出", "Panel closed"),
-    "log_saved": ("手感已保存：路面 %.2f× ｜ 刹车 %.2f× ｜ 油门 %.2f× ｜ 事件 %.2f ｜ 推头 %.2f ｜ 失控 %.2f",
-                  "Feel saved: road %.2f× | brake %.2f× | throttle %.2f× | event %.2f | understeer %.2f | loss of control %.2f"),
+    "log_saved": ("手感已保存：路面 %.2f× ｜ 刹车 %.2f× ｜ 油门 %.2f× ｜ 事件 %.2f ｜ 推头 %.2f× ｜ 失控 %.2f×",
+                  "Feel saved: road %.2f× | brake %.2f× | throttle %.2f× | event %.2f | understeer %.2f× | loss of control %.2f×"),
+    "log_value_max": ("%s 最大 %s，已按上限处理。",
+                      "%s max is %s; using the maximum."),
+    "log_value_min": ("%s 最小 0，已按 0 处理。",
+                      "%s minimum is 0; using 0."),
+    "log_value_bad": ("%s 需要一个数字，已恢复原值。",
+                      "%s needs a number; reverted to the previous value."),
     "log_save_fail": ("保存手感失败：%s", "Saving feel settings failed: %s"),
     "log_starting": ("正在启动震动……", "Starting haptics…"),
     "log_stopping": ("正在停止……", "Stopping…"),
@@ -146,8 +153,8 @@ MESSAGES = {
     "cfg_out_of_range": ("[手感] %s = %.2f 超出 %.2f~%.2f，按 %.2f 处理。",
                          "[Settings] %s = %.2f is outside %.2f~%.2f; using %.2f."),
     "cfg_updated": ("[手感] 已更新：%s", "[Settings] Updated: %s"),
-    "cfg_tuning_text": ("路面 %.2f× ｜ 刹车底层 %.2f× ｜ 油门底层 %.2f× ｜ 事件 %.2f ｜ 推头 %.2f ｜ 失控 %.2f",
-                        "Road %.2f× | Brake floor %.2f× | Throttle floor %.2f× | Event %.2f | Understeer %.2f | Loss of control %.2f"),
+    "cfg_tuning_text": ("路面 %.2f× ｜ 刹车底层 %.2f× ｜ 油门底层 %.2f× ｜ 事件 %.2f ｜ 推头 %.2f× ｜ 失控 %.2f×",
+                        "Road %.2f× | Brake floor %.2f× | Throttle floor %.2f× | Event %.2f | Understeer %.2f× | Loss of control %.2f×"),
 
     # ── 命令行版 ──────────────────────────────────────────────────
     "cli_preflight": ("开始前确认：", "Before you start:"),

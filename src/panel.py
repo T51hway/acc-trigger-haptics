@@ -22,6 +22,7 @@
 import ctypes
 import json
 import logging
+import math
 import os
 import re
 import shutil
@@ -83,7 +84,7 @@ _ACC_RELATIVE = Path("steamapps") / "common" / "Assetto Corsa Competizione" \
     / "AC2" / "Binaries" / "Win64"
 _ACC_CACHE = {"at": 0.0, "path": None}
 
-# 滑块：(键, 文案键, 上限)。上限只是"拖到头"的位置，不改变程序里的合法范围。
+# 滑块：(键, 文案键, 上限)。上限是滑块最右端对应的实际数值。
 SLIDERS = (
     ("grip_road", "sl_road", 4.00),
     ("trigger_floor", "sl_brake", 1.80),
@@ -93,8 +94,40 @@ SLIDERS = (
     ("loss_gain", "sl_loss", 1.50),
 )
 
-# 这三项是倍率：1.00 = 标准手感。界面和日志里数值后面加 ×，免得被当成绝对强度。
-GAIN_KEYS = ("grip_road", "trigger_floor", "throttle_floor")
+# 这五项是倍率：1.00 = 标准手感，界面和日志里数值后面加 ×。
+GAIN_KEYS = ("grip_road", "trigger_floor", "throttle_floor",
+             "understeer_gain", "loss_gain")
+
+TOPS = {key: top for key, _label, top in SLIDERS}
+LABEL_KEYS = {key: label for key, label, _top in SLIDERS}
+
+# 倍率滑块的位置范围固定为 0~2：中点 1.00 是标准值，
+# 左半段 0~1 线性，右半段 1~上限线性。这样 1.00 永远在正中间，
+# 同时保留各自的最大倍率（路面 4×，刹车 1.8× ……）。
+SLIDER_SPAN = 2.0
+SMALL_FONT = ("Microsoft YaHei UI", 8)
+
+
+def value_to_position(key, value):
+    """实际倍率 → 滑块位置（0~2）。非倍率项原样返回。"""
+    if key not in GAIN_KEYS:
+        return value
+    top = max(1.0, TOPS[key])
+    value = max(0.0, min(top, value))
+    if value <= 1.0:
+        return value
+    return 1.0 + (value - 1.0) / (top - 1.0)
+
+
+def position_to_value(key, position):
+    """滑块位置（0~2）→ 实际倍率。非倍率项原样返回。"""
+    if key not in GAIN_KEYS:
+        return position
+    top = max(1.0, TOPS[key])
+    position = max(0.0, min(SLIDER_SPAN, position))
+    if position <= 1.0:
+        return position
+    return 1.0 + (position - 1.0) * (top - 1.0)
 
 
 def format_value(key, value):
@@ -415,6 +448,8 @@ class Panel:
         self._guard = threading.Lock()
         self._last_line = ""
         self._write_job = None
+        self._flash_jobs = {}
+        self._syncing = False
         self._closing = False
 
         root.title("ACC Trigger Haptics")
@@ -487,23 +522,49 @@ class Panel:
         # 滑块
         tuning = load_tuning()
         self.vars = {}
-        self.value_labels = {}
+        self.value_vars = {}
+        self.value_entries = {}
         sliders = ttk.LabelFrame(frame, text=t("group_tuning"), padding=8)
         sliders.grid(row=1, column=0, columnspan=3, sticky="ew", pady=(10, 0))
         for row, (key, label_key, top) in enumerate(SLIDERS):
+            is_gain = key in GAIN_KEYS
             ttk.Label(sliders, text=t(label_key), width=13).grid(
                 row=row, column=0, sticky="w", pady=3)
-            var = tk.DoubleVar(value=float(tuning[key]))
+            ttk.Label(sliders, text="0", width=2, anchor="e",
+                      foreground=C_GRAY, font=SMALL_FONT).grid(
+                row=row, column=1, sticky="e")
+
+            var = tk.DoubleVar(
+                value=value_to_position(key, float(tuning[key])))
             self.vars[key] = var
-            ttk.Scale(sliders, from_=0.0, to=top, variable=var,
-                      orient="horizontal", length=230,
+            span = SLIDER_SPAN if is_gain else top
+            ttk.Scale(sliders, from_=0.0, to=span, variable=var,
+                      orient="horizontal", length=170,
                       command=lambda _v, k=key: self._on_slide(k)).grid(
-                row=row, column=1, sticky="ew", padx=6)
-            value = ttk.Label(sliders, text=format_value(key, float(tuning[key])),
-                              width=6, anchor="e")
-            value.grid(row=row, column=2, sticky="e")
-            self.value_labels[key] = value
-        sliders.columnconfigure(1, weight=1)
+                row=row, column=2, sticky="ew", padx=4)
+
+            ttk.Label(sliders, text=format_value(key, top), width=6,
+                      anchor="w", foreground=C_GRAY, font=SMALL_FONT).grid(
+                row=row, column=3, sticky="w")
+
+            text = tk.StringVar(value="%.2f" % position_to_value(
+                key, float(var.get())))
+            self.value_vars[key] = text
+            entry = ttk.Entry(sliders, textvariable=text, width=6,
+                              justify="right", font=font)
+            entry.grid(row=row, column=4, sticky="e", padx=(4, 0))
+            entry.bind("<Return>", lambda _e, k=key: self._commit_entry(k))
+            entry.bind("<KP_Enter>", lambda _e, k=key: self._commit_entry(k))
+            entry.bind("<FocusOut>", lambda _e, k=key: self._commit_entry(k))
+            entry.bind("<Escape>", lambda _e, k=key: self._cancel_entry(k))
+            entry.bind("<FocusIn>",
+                       lambda _e, k=key, w=entry: self._focus_entry(k, w))
+            self.value_entries[key] = entry
+
+            ttk.Label(sliders, text="×" if is_gain else "",
+                      foreground=C_GRAY).grid(
+                row=row, column=5, sticky="w", padx=(2, 0))
+        sliders.columnconfigure(2, weight=1)
 
         # 按钮
         buttons = ttk.Frame(frame)
@@ -559,21 +620,122 @@ class Panel:
         settings = load_settings()
         settings["language"] = code
         save_settings(settings)
+        for job in self._flash_jobs.values():
+            try:
+                self.root.after_cancel(job)
+            except Exception:
+                pass
+        self._flash_jobs.clear()
         for child in self.root.winfo_children():
             child.destroy()
         self._build()
 
     # ── 交互 ─────────────────────────────────────────────────────
+    def _current_value(self, key):
+        return position_to_value(key, float(self.vars[key].get()))
+
+    def _show_value(self, key):
+        self.value_vars[key].set("%.2f" % self._current_value(key))
+
     def _on_slide(self, key):
-        value = self.vars[key].get()
-        self.value_labels[key].configure(text=format_value(key, value))
+        if self._syncing:
+            return
+        self._show_value(key)
+        self._flash_entry(key, None)
         if self._write_job is not None:
             self.root.after_cancel(self._write_job)
         self._write_job = self.root.after(250, self._flush_values)
 
+    def _focus_entry(self, key, widget):
+        try:
+            widget.selection_range(0, "end")
+        except tk.TclError:
+            pass
+
+    def _cancel_entry(self, key):
+        self._show_value(key)
+        self._flash_entry(key, None)
+        self.root.focus_set()
+
+    def _commit_entry(self, key):
+        label = t(LABEL_KEYS[key])
+        raw = self.value_vars[key].get().strip()
+        text = raw.replace("×", "").replace("x", "").replace("X", "")
+        text = text.replace(",", ".").strip()
+
+        # 没改过就只是失焦，不重复写文件。
+        if text == "%.2f" % self._current_value(key):
+            self._show_value(key)
+            return
+
+        try:
+            value = float(text)
+            if not math.isfinite(value):
+                raise ValueError
+        except (TypeError, ValueError):
+            self._show_value(key)
+            self._flash_entry(key, C_RED)
+            self.log(t("log_value_bad", label))
+            return
+
+        top = TOPS[key]
+        clamped = max(0.0, min(top, value))
+
+        self._syncing = True
+        try:
+            self.vars[key].set(value_to_position(key, clamped))
+        finally:
+            self._syncing = False
+        self._show_value(key)
+
+        if self._write_job is not None:
+            self.root.after_cancel(self._write_job)
+            self._write_job = None
+        self._flush_values()
+
+        # 保存日志先写，再把范围提示放到最后，保证底部先看到的是提示。
+        if clamped != value:
+            self._flash_entry(key, C_AMBER)
+            if value > top:
+                self.log(t("log_value_max", label, format_value(key, top)))
+            else:
+                self.log(t("log_value_min", label))
+        else:
+            self._flash_entry(key, None)
+
+    def _flash_entry(self, key, color):
+        """输入框闪一下颜色：红色=格式错误，琥珀=超出范围。"""
+        entry = self.value_entries.get(key)
+        if entry is None:
+            return
+        job = self._flash_jobs.pop(key, None)
+        if job is not None:
+            try:
+                self.root.after_cancel(job)
+            except Exception:
+                pass
+        try:
+            entry.configure(foreground=color or "black")
+        except tk.TclError:
+            return
+        if color is None:
+            return
+
+        def reset():
+            self._flash_jobs.pop(key, None)
+            widget = self.value_entries.get(key)
+            if widget is not None:
+                try:
+                    widget.configure(foreground="black")
+                except tk.TclError:
+                    pass
+
+        self._flash_jobs[key] = self.root.after(1800, reset)
+
     def _flush_values(self):
         self._write_job = None
-        values = {key: round(float(var.get()), 2) for key, var in self.vars.items()}
+        values = {key: round(position_to_value(key, float(var.get())), 2)
+                  for key, var in self.vars.items()}
         try:
             save_values(config_path(), values)
         except Exception as exc:

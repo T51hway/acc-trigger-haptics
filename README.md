@@ -22,7 +22,7 @@ motors: grips for road feel, triggers for braking, throttle and tyre limits.
 
 The program is not code-signed, so Windows may warn that the publisher is unknown. That is expected.
 
-- exe SHA256: `5088b2e8b6029664884f75a5f945f2c8a772fc2a2428debd9aa83282159871aa`
+- exe SHA256: `f780adeb1e3cb5f5b9c55c3d398697734e1724d410c5ae993bee6296a685a4fa`
 - Proxy DLL SHA256: `8e284775850c9cba345b2b9912a71a45050f84c9186a0387387f5105cd4afe6c`
 - Multi-engine scan (VirScan, 30 engines): [v0.2.0 exe](https://www.virscan.org/report/4e4482472f3b62f87246e50194903a372bc64e93bd57e0fdf6c3069cb45a6cd0) · [proxy DLL](https://www.virscan.org/report/8e284775850c9cba345b2b9912a71a45050f84c9186a0387387f5105cd4afe6c). The v0.2.1 exe has not been rescanned yet.
 - The proxy DLL is ~60 lines of C: [`proxy.c`](tools/xinput_proxy/proxy.c); build command in the README next to it
@@ -216,7 +216,7 @@ The log contains only runtime status and local paths, no account credentials.
 
 ## Tuning
 
-Six sliders in the panel, saved as you drag:
+Six sliders in the panel; drag them or type a value, and changes are saved automatically:
 
 | Slider | What it does | Default | Suggested range |
 | --- | --- | --- | --- |
@@ -224,12 +224,17 @@ Six sliders in the panel, saved as you drag:
 | Brake floor | Left trigger follows brake pressure | 1.00 | 0 – 1.8 |
 | Throttle floor | Right trigger follows throttle | 1.00 | 0 – 2.3 |
 | Event strength | Pulse strength for lock / ABS / wheelspin | 0.75 | 0 – 1.0 |
-| Understeer gain | Right trigger strength when the front pushes; 0 = off | 1.00 | 0 – 1.0 |
-| Loss of control | Both grips when the rear slides / spins; 0 = off | 1.00 | 0 – 1.0 |
+| Understeer gain | Right trigger strength when the front pushes; 0 = off | 1.00 | 0 – 1.5 |
+| Loss of control | Both grips when the rear slides / spins; 0 = off | 1.00 | 0 – 1.5 |
 
-Road / brake / throttle are **multipliers**: `1.00` is the standard feel, `2.00` is
-twice as strong, `0` turns it off. Above about `1.25` on the brake floor, lock / ABS
-contrast gets weaker — more is not better.
+Road texture, brake floor, throttle floor, understeer gain and loss of control are
+**multipliers**: `1.00` is the standard feel, `0` turns the channel off. On these five
+sliders `1.00` sits in the middle: the left half goes `0 → 1.00`, the right half
+`1.00 → the maximum` shown at the end.
+
+The value box on the right accepts direct input: press Enter or click away to apply,
+Esc to cancel. Values above the maximum are clamped and reported.
+Above about `1.25` on the brake floor, lock / ABS contrast gets weaker — more is not better.
 
 **How to tune:**
 
