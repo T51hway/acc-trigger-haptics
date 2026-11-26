@@ -8,7 +8,7 @@
 给《神力科莎：竞技版》（ACC）补上 Xbox 手柄的**扳机震动**。ACC 原生只震两个握把；
 这个程序读游戏遥测，把四个马达都用起来：握把给路感，扳机给刹车、油门和轮胎极限。
 
-**当前版本 v0.2.1** · [下载最新版](https://github.com/T51hway/acc-trigger-haptics/releases/latest) · 约 10 MB，单文件，不需要安装 Python。
+**当前版本 v0.2.2** · [下载最新版](https://github.com/T51hway/acc-trigger-haptics/releases/latest) · 约 10 MB，单文件，不需要安装 Python。
 
 ![控制面板](docs/panel.png)
 
@@ -20,9 +20,9 @@
 
 程序没有数字签名，Windows 可能提示「未知发布者」，这是正常的。
 
-- exe 指纹（SHA256）：`f780adeb1e3cb5f5b9c55c3d398697734e1724d410c5ae993bee6296a685a4fa`
+- exe 指纹（SHA256）：`863b97255c9a5eb656f0ecfa6436c60315a6c6e4b018859c6b3edf50fe62cadb`
 - 代理 DLL 指纹（SHA256）：`8e284775850c9cba345b2b9912a71a45050f84c9186a0387387f5105cd4afe6c`
-- 多引擎扫描结果（VirScan，30 个引擎）：[v0.2.0 的 exe](https://www.virscan.org/report/4e4482472f3b62f87246e50194903a372bc64e93bd57e0fdf6c3069cb45a6cd0) · [代理 DLL](https://www.virscan.org/report/8e284775850c9cba345b2b9912a71a45050f84c9186a0387387f5105cd4afe6c)。v0.2.1 的 exe 尚未重新扫描。
+- 多引擎扫描结果（VirScan，30 个引擎）：[v0.2.0 的 exe](https://www.virscan.org/report/4e4482472f3b62f87246e50194903a372bc64e93bd57e0fdf6c3069cb45a6cd0) · [代理 DLL](https://www.virscan.org/report/8e284775850c9cba345b2b9912a71a45050f84c9186a0387387f5105cd4afe6c)。v0.2.2 的 exe 尚未重新扫描。
 - 代理 DLL 只有 60 行 C 源码：[`proxy.c`](tools/xinput_proxy/proxy.c)，编译命令在同目录的 README
 - 下载后双击 `校验哈希.bat`，它会比对上面的指纹并告诉你是否一致（只下载 exe 时校验 exe；从源码使用时会连代理 DLL 一起校验）
 
