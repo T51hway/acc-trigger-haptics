@@ -61,9 +61,9 @@ from controller rumble.
 
 ### Steps
 
-1. Download `ACC Trigger Haptics.exe` from
+1. Download `ACC-Trigger-Haptics.exe` from
    [Releases](https://github.com/T51hway/acc-trigger-haptics/releases/latest).
-2. Put it in a **normal folder**, for example `D:\ACC Trigger Haptics\`.
+2. Put it in a **normal folder**, for example `D:\ACC-Trigger-Haptics\`.
    Do not put it in `C:\Program Files`, and do not run it straight from the zip —
    the program writes its settings and log next to itself.
 3. Double-click it. The first run may show Windows SmartScreen:
@@ -305,10 +305,10 @@ Build (Windows, PyInstaller):
 
 ```
 python -m pip install pyinstaller
-python -m PyInstaller --noconfirm --clean --onefile --windowed --name "ACC Trigger Haptics" --paths src --add-data "tools\xinput_proxy\xinput1_3.dll;tools\xinput_proxy" src\panel.py
+python -m PyInstaller --noconfirm --clean --onefile --windowed --name ACC-Trigger-Haptics --paths src --add-data "tools\xinput_proxy\xinput1_3.dll;tools\xinput_proxy" src\panel.py
 ```
 
-The output is `dist\ACC Trigger Haptics.exe`, ready to upload to a release. When running from source,
+The output is `dist\ACC-Trigger-Haptics.exe`, ready to upload to a release. When running from source,
 `开启接管.bat` / `恢复原生.bat` do the same install/restore job. Note that these scripts
 only check a few common Steam library paths; if the game is installed elsewhere, add your
 path to the script. If unsure, use the panel's **Install takeover**, which reads the Steam registry.

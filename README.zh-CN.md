@@ -57,8 +57,8 @@
 ### 步骤
 
 1. 从 [Releases](https://github.com/T51hway/acc-trigger-haptics/releases/latest) 下载
-   `ACC Trigger Haptics.exe`。
-2. 把它放进一个**普通文件夹**，比如 `D:\ACC Trigger Haptics\`。
+   `ACC-Trigger-Haptics.exe`。
+2. 把它放进一个**普通文件夹**，比如 `D:\ACC-Trigger-Haptics\`。
    不要放 `C:\Program Files`，也不要每次从压缩包里直接双击——
    程序要在自己旁边写设置和日志。
 3. 双击运行。第一次可能遇到 Windows SmartScreen：
@@ -289,10 +289,10 @@ python src/panel.py     # 图形面板
 
 ```
 python -m pip install pyinstaller
-python -m PyInstaller --noconfirm --clean --onefile --windowed --name "ACC Trigger Haptics" --paths src --add-data "tools\xinput_proxy\xinput1_3.dll;tools\xinput_proxy" src\panel.py
+python -m PyInstaller --noconfirm --clean --onefile --windowed --name ACC-Trigger-Haptics --paths src --add-data "tools\xinput_proxy\xinput1_3.dll;tools\xinput_proxy" src\panel.py
 ```
 
-产物是 `dist\ACC Trigger Haptics.exe`，可以直接上传到 Release。源码运行时，`开启接管.bat` / `恢复原生.bat`
+产物是 `dist\ACC-Trigger-Haptics.exe`，可以直接上传到 Release。源码运行时，`开启接管.bat` / `恢复原生.bat`
 可以做同样的事；注意这两个脚本只认几个常见的 Steam 库路径，游戏装在别处时
 要在脚本里加一行自己的路径。不确定就用面板的「安装接管」，它会读 Steam 注册表。
 
