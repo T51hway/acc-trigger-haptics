@@ -50,6 +50,7 @@ MESSAGES = {
     # ── 面板：提示与日志 ──────────────────────────────────────────
     "log_started": ("面板已启动 v%s", "Panel started v%s"),
     "log_exit": ("面板退出", "Panel closed"),
+    "log_language": ("界面语言：%s", "Interface language: %s"),
     "log_saved": ("手感已保存：路面 %.2f× ｜ 刹车 %.2f× ｜ 油门 %.2f× ｜ 事件 %.2f ｜ 推头 %.2f× ｜ 失控 %.2f×",
                   "Feel saved: road %.2f× | brake %.2f× | throttle %.2f× | event %.2f | understeer %.2f× | loss of control %.2f×"),
     "log_value_max": ("%s 最大 %s，已按上限处理。",

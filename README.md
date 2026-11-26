@@ -10,7 +10,7 @@ Adds Xbox controller **trigger haptics** to Assetto Corsa Competizione (ACC).
 ACC only rumbles the two grips; this program reads the game's telemetry and uses all four
 motors: grips for road feel, triggers for braking, throttle and tyre limits.
 
-**Current version: v0.2.2** · [Download the latest release](https://github.com/T51hway/acc-trigger-haptics/releases/latest) · about 10 MB, single file, no Python required.
+**Current version: v0.2.3** · [Download the latest release](https://github.com/T51hway/acc-trigger-haptics/releases/latest) · about 10 MB, single file, no Python required.
 
 ![Control panel](docs/panel.en.png)
 
@@ -22,7 +22,7 @@ motors: grips for road feel, triggers for braking, throttle and tyre limits.
 
 The program is not code-signed, so Windows may warn that the publisher is unknown. That is expected.
 
-- exe SHA256: `863b97255c9a5eb656f0ecfa6436c60315a6c6e4b018859c6b3edf50fe62cadb`
+- exe SHA256: `38da373cc7008436f276afb984f443be2d83445d8b0cee8356b1b9fb229b0507`
 - Proxy DLL SHA256: `8e284775850c9cba345b2b9912a71a45050f84c9186a0387387f5105cd4afe6c`
 - The proxy DLL is ~60 lines of C: [`proxy.c`](tools/xinput_proxy/proxy.c); build command in the README next to it
 - After downloading, double-click `校验哈希.bat` ("verify hash"): it compares the fingerprint above and tells you whether it matches (the exe only for a release-only download; the proxy DLL too when running from source)

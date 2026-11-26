@@ -8,7 +8,7 @@
 给《神力科莎：竞技版》（ACC）补上 Xbox 手柄的**扳机震动**。ACC 原生只震两个握把；
 这个程序读游戏遥测，把四个马达都用起来：握把给路感，扳机给刹车、油门和轮胎极限。
 
-**当前版本 v0.2.2** · [下载最新版](https://github.com/T51hway/acc-trigger-haptics/releases/latest) · 约 10 MB，单文件，不需要安装 Python。
+**当前版本 v0.2.3** · [下载最新版](https://github.com/T51hway/acc-trigger-haptics/releases/latest) · 约 10 MB，单文件，不需要安装 Python。
 
 ![控制面板](docs/panel.png)
 
@@ -20,7 +20,7 @@
 
 程序没有数字签名，Windows 可能提示「未知发布者」，这是正常的。
 
-- exe 指纹（SHA256）：`863b97255c9a5eb656f0ecfa6436c60315a6c6e4b018859c6b3edf50fe62cadb`
+- exe 指纹（SHA256）：`38da373cc7008436f276afb984f443be2d83445d8b0cee8356b1b9fb229b0507`
 - 代理 DLL 指纹（SHA256）：`8e284775850c9cba345b2b9912a71a45050f84c9186a0387387f5105cd4afe6c`
 - 代理 DLL 只有 60 行 C 源码：[`proxy.c`](tools/xinput_proxy/proxy.c)，编译命令在同目录的 README
 - 下载后双击 `校验哈希.bat`，它会比对上面的指纹并告诉你是否一致（只下载 exe 时校验 exe；从源码使用时会连代理 DLL 一起校验）

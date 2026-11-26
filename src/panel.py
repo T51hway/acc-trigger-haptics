@@ -629,6 +629,9 @@ class Panel:
         for child in self.root.winfo_children():
             child.destroy()
         self._build()
+        # 状态栏保存的是翻译好的成品字符串，切语言后要写一条新的，
+        # 否则会一直显示切换前那种语言的最后一条消息。
+        self.log(t("log_language", "English" if code == "en" else "中文"))
 
     # ── 交互 ─────────────────────────────────────────────────────
     def _current_value(self, key):
