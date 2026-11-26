@@ -49,14 +49,12 @@ from controller rumble.
 ### Before you start
 
 - Windows 10 / 11
-- Xbox One / Xbox One S / Xbox Series controller (Xbox 360 has no trigger motors)
-- Connect the controller over Bluetooth or USB-C; the original Xbox One has no Bluetooth and is
-  micro-USB wired only (One S is micro-USB; only Series uses USB-C). Bluetooth and USB-C
-  on One S / Series have both been tested; the original One over USB is untested.
+- Controller: Xbox Series X|S (tested). Xbox 360 has no trigger motors; other Xbox controllers
+  (One / One S / Elite 2) are untested and not guaranteed to work.
 - Turn off **Steam Input** in Steam:
   Steam → Settings → Controller → Enable Steam Input for Xbox controllers (off).
-  If you also see `Xbox Controller Enhanced Features Driver`, turn that off too.
-- ACC has only been tested on Steam (Microsoft Store version untested).
+  If Steam's controller settings also show `Xbox Controller Enhanced Features Driver`, turn it off too.
+- ACC PC (Steam); console versions are out of scope.
   **Quit ACC completely** (not minimized) before installing the takeover.
 
 ### Steps
@@ -75,6 +73,10 @@ from controller rumble.
 6. Back in the panel, click **Start haptics**.
 7. Four green lamps = Proxy DLL / Controller / ACC telemetry / Haptics all working.
 8. Drag the sliders to tune; changes apply within a second, no game restart needed.
+
+While running, Start haptics is greyed out; use Stop haptics. The language switch is at the
+bottom left; the version number is at the bottom right. If ACC is in fullscreen, Alt+Tab back
+to the panel; borderless mode is more convenient for tuning.
 
 > You can minimize the panel, but **do not close it**. Closing stops the haptics and zeroes
 > the motors first; killing it from Task Manager may leave the motors running.
@@ -126,14 +128,13 @@ is still taken over, so neither the grips nor the triggers rumble — and nothin
 | Item | Status |
 | --- | --- |
 | Windows | 10 / 11 |
-| Controller | Xbox One (micro-USB wired only), Xbox One S / Series X\|S (Bluetooth or USB-C) |
-| Original Xbox One controller | ⚠️ No Bluetooth; micro-USB wired only. Not specifically tested |
+| Xbox Series X\|S | ✅ Bluetooth / USB-C; tested |
+| Other Xbox controllers (One / One S / Elite 2) | ⚠️ Untested; they have trigger motors, but are not guaranteed to work |
 | Xbox 360 controller | ❌ No trigger motors |
-| Xbox Elite 2 | ⚠️ Untested |
 | Third-party "Xbox-compatible" controllers (8BitDo, Flydigi, BETOP, etc.) | ⚠️ Untested. Many have no trigger motors, or do not use Microsoft's HID report, so they may not respond at all |
 | Official Xbox Wireless Adapter | ⚠️ Untested |
 | Wheel + controller connected at the same time | Only the Xbox controller is driven; the wheel is unaffected. Multiple controllers are not explicitly handled |
-| ACC platform | Steam only tested; Microsoft Store version untested |
+| ACC platform | PC (Steam); console versions are out of scope |
 | ACC version | v0.2.0 tested on the 2026-11 ACC build; if rumble becomes intermittent after a big game update, reinstall the takeover |
 
 ---
@@ -149,7 +150,7 @@ Check the four lamps first:
 | Lamp | Green means | If it is not green |
 | --- | --- | --- |
 | Proxy DLL | Installed | Click **Install takeover**; quit ACC completely first |
-| Controller | Connected | Press a button on the controller; check Bluetooth pairing; make sure Steam Input is off |
+| Controller | Connected (only after Start haptics; amber "waiting" if not connected) | Click Start haptics first; if it stays amber, press a button, check Bluetooth pairing, and make sure Steam Input is off |
 | ACC telemetry | Live | You must be on track; no data in the main menu / while paused is normal |
 | Haptics | Running | Click **Start haptics** |
 
@@ -160,6 +161,11 @@ Check the four lamps first:
 - Is the USB cable charge-only? Try a data cable.
 - At very low battery the trigger motors may not run; replace the battery or plug in.
 - Did an ACC update overwrite the proxy DLL? Reinstall the takeover.
+
+**Install takeover says "File missing" / antivirus removed the DLL (some AVs flag it)**
+
+Add the exe and the ACC `Win64` folder to your antivirus exclusions, then click Install takeover again.
+Only do this if you trust the source.
 
 **It worked before, but became stuttery after an ACC update**
 
@@ -240,7 +246,7 @@ No full lap needed. Do this once to confirm every channel:
    (with high ABS the wheels rarely lock; that is normal)
 3. **Rear wheelspin**: low-speed, full throttle out of a corner → right trigger rumbles; less when TC intervenes
 4. **Understeer**: brake late and add steering → the right trigger rumbles continuously
-5. **Loss of control**: full throttle out of a corner until the rear slides → both grips rumble together
+5. **Loss of control**: lower or turn off TC, full throttle out of a corner until the rear slides → both grips rumble together
 6. **Road feel**: drive normally for a bit → both grips give a continuous road texture
 
 ---
