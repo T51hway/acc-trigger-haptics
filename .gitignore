@@ -78,8 +78,8 @@ docs/captures/
 设计说明.md
 docs/交接.md
 
-# 打包产物（由 PyInstaller 生成，不进仓库）
-ACC Trigger Haptics.exe
+# 打包产物（由 PyInstaller 生成，不进仓库；只上传到 Release）
+/ACC-Trigger-Haptics.exe
 
 # 面板本机状态（语言选择等）
 panel-settings.json
