@@ -85,13 +85,21 @@ _ACC_CACHE = {"at": 0.0, "path": None}
 
 # 滑块：(键, 文案键, 上限)。上限只是"拖到头"的位置，不改变程序里的合法范围。
 SLIDERS = (
-    ("grip_road", "sl_road", 0.80),
-    ("trigger_floor", "sl_brake", 0.50),
-    ("throttle_floor", "sl_throttle", 0.35),
+    ("grip_road", "sl_road", 4.00),
+    ("trigger_floor", "sl_brake", 1.80),
+    ("throttle_floor", "sl_throttle", 2.30),
     ("trigger_event", "sl_event", 1.00),
     ("understeer_gain", "sl_understeer", 1.50),
     ("loss_gain", "sl_loss", 1.50),
 )
+
+# 这三项是倍率：1.00 = 标准手感。界面和日志里数值后面加 ×，免得被当成绝对强度。
+GAIN_KEYS = ("grip_road", "trigger_floor", "throttle_floor")
+
+
+def format_value(key, value):
+    suffix = "×" if key in GAIN_KEYS else ""
+    return "%.2f%s" % (value, suffix)
 
 
 def load_settings():
@@ -491,8 +499,8 @@ class Panel:
                       orient="horizontal", length=230,
                       command=lambda _v, k=key: self._on_slide(k)).grid(
                 row=row, column=1, sticky="ew", padx=6)
-            value = ttk.Label(sliders, text="%.2f" % float(tuning[key]), width=5,
-                              anchor="e")
+            value = ttk.Label(sliders, text=format_value(key, float(tuning[key])),
+                              width=6, anchor="e")
             value.grid(row=row, column=2, sticky="e")
             self.value_labels[key] = value
         sliders.columnconfigure(1, weight=1)
@@ -558,7 +566,7 @@ class Panel:
     # ── 交互 ─────────────────────────────────────────────────────
     def _on_slide(self, key):
         value = self.vars[key].get()
-        self.value_labels[key].configure(text="%.2f" % value)
+        self.value_labels[key].configure(text=format_value(key, value))
         if self._write_job is not None:
             self.root.after_cancel(self._write_job)
         self._write_job = self.root.after(250, self._flush_values)

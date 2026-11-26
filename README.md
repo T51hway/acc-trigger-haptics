@@ -220,21 +220,22 @@ Six sliders in the panel, saved as you drag:
 
 | Slider | What it does | Default | Suggested range |
 | --- | --- | --- | --- |
-| Road texture | Grip rumble from the road surface | 0.21 | 0 – 0.6 |
-| Brake floor | Left trigger follows brake pressure | 0.20 | 0 – 0.35 |
-| Throttle floor | Right trigger follows throttle | 0.15 | 0 – 0.35 |
+| Road texture | Grip rumble from the road surface | 1.00 | 0 – 4 |
+| Brake floor | Left trigger follows brake pressure | 1.00 | 0 – 1.8 |
+| Throttle floor | Right trigger follows throttle | 1.00 | 0 – 2.3 |
 | Event strength | Pulse strength for lock / ABS / wheelspin | 0.75 | 0 – 1.0 |
 | Understeer gain | Right trigger strength when the front pushes; 0 = off | 1.00 | 0 – 1.0 |
 | Loss of control | Both grips when the rear slides / spins; 0 = off | 1.00 | 0 – 1.0 |
 
-**Above 0.6 the motors tend to saturate**, flattening kerbs, left/right differences and
-strong-vs-weak contrast. More is not better.
+Road / brake / throttle are **multipliers**: `1.00` is the standard feel, `2.00` is
+twice as strong, `0` turns it off. Above about `1.25` on the brake floor, lock / ABS
+contrast gets weaker — more is not better.
 
 **How to tune:**
 
 - Road too noisy / grips always buzzing: lower **Road texture**
-- Triggers feel dead: raise **Brake floor** / **Throttle floor**, but stay below 0.35,
-  otherwise the lock / ABS contrast gets weaker
+- Triggers feel dead: raise **Brake floor** / **Throttle floor**, but keep the brake
+  floor below about 1.25×, otherwise the lock / ABS contrast gets weaker
 - Lock / ABS not obvious enough: raise **Event strength**
 - Understeer false alarms: lower **Understeer gain** or set it to 0 (off)
 - Loss-of-control false alarms in normal corners: lower **Loss of control** or set it to 0

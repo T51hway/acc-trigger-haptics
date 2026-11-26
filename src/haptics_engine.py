@@ -89,8 +89,11 @@ from i18n import t
 # ── 参数初值（设计说明.md 第六节）────────────────────────────────
 # 这些是"从数据分布推出来的候选值"，不是手感验证过的值。
 # 阶段 3 的闭眼测试要重新定，先集中放在这里，方便一处改。
-PRESSURE_FLOOR_MAX = 0.20        # 底层压力反馈上限 20%（D5）
-THROTTLE_FLOOR_MAX = 0.15        # 右扳机·油门底层；比刹车低，避免长时间给油一直嗡嗡
+#
+# 2026-11-26 起，路面 / 刹车 / 油门三个强度改成"倍率"：设置文件里写 1.00，
+# 就乘以下面对应的基准振幅。数值语义统一了，手感一点没变。
+PRESSURE_FLOOR_REFERENCE = 0.28  # 刹车底层基准振幅（1.00 对应它）
+THROTTLE_FLOOR_REFERENCE = 0.15  # 油门底层基准振幅；比刹车低，避免长时间给油一直嗡嗡
 
 # 压力底层的车速门限（2026-11-25 用户要求）：
 # 停着踩满刹车也一直震，像故障；车速低于 OFF 时这一层归零，到 FULL 恢复全量。
@@ -160,7 +163,7 @@ LOSS_ATTACK = 0.012              # 12ms 起振
 LOSS_RELEASE = 0.150             # 150ms 收振：滑掉了就持续，救回来就落
 LOSS_GAIN = 1.00                 # 失控强度（两个握把同强度）
 
-GRIP_ROAD_WEIGHT = 0.21          # 路面纹理基准（2026-11-25 从 1.00 降下来：原标度整体偏大）
+GRIP_ROAD_REFERENCE = 0.05       # 路面纹理基准振幅（1.00 对应它）
 GRIP_ROAD_CURVE = 0.50           # 轻纹理抬升（越小越明显）
 G_VIBRATION_DEADZONE = 0.05      # gVibrations 不设死区就是永远在震（实测 91.5% 的帧 >0.02）
 G_VIBRATION_FULL = 7.5           # 实测上限
@@ -176,17 +179,17 @@ MIX_FLOOR = 0.002                # 小于这个的贡献当作没有（报文本
 # 只把最常调的几项放出去。其余（阈值、曲线、混音预算）等闭眼测试
 # 有结论了再往外放，免得一次给太多旋钮反而不知道动哪个。
 DEFAULT_TUNING = {
-    "grip_road": GRIP_ROAD_WEIGHT,
-    "trigger_floor": PRESSURE_FLOOR_MAX,
-    "throttle_floor": THROTTLE_FLOOR_MAX,
+    "grip_road": 1.00,
+    "trigger_floor": 1.00,
+    "throttle_floor": 1.00,
     "trigger_event": EVENT_AMPLITUDE,
     "understeer_gain": UNDERSTEER_GAIN,
     "loss_gain": LOSS_GAIN,
 }
 TUNING_RANGES = {
-    "grip_road": (0.0, 0.80),
-    "trigger_floor": (0.0, 0.50),
-    "throttle_floor": (0.0, 0.35),
+    "grip_road": (0.0, 4.0),
+    "trigger_floor": (0.0, 1.8),
+    "throttle_floor": (0.0, 2.3),
     "trigger_event": (0.0, 1.0),
     "understeer_gain": (0.0, 1.50),
     "loss_gain": (0.0, 1.50),
@@ -197,16 +200,16 @@ CONFIG_TEMPLATE = """# ACC Trigger Haptics · 手感设置
 #
 # 只改等号 = 右边的数字。# 后面是说明，改了不会生效。
 # 改完保存：程序每秒检查一次，1 秒内生效，不用重启。
-# 强度类：数字越大越强。路面纹理 0.21 左右是基准（实测手感）。
-# 注意：超过 0.6 容易把马达顶满，差别会被抹平。
+# 强度类：数字越大越强。路面 / 刹车 / 油门是倍率，1.00 = 标准手感，2.00 = 两倍。
+# 事件 / 推头 / 失控是 0~1 的强度，1.00 = 满幅。
 
-grip_road = %(grip_road).2f      # 握把·路面纹理
+grip_road = %(grip_road).2f      # 握把·路面纹理（倍率，1.00 = 标准）
 
-# 左扳机：刹车压力底层（0 ~ 0.35 比较合理，代码上限 0.50）。D5 基准 0.20；
-# 调高更有实感，但锁死 / ABS 的对比会变弱。
+# 左扳机：刹车压力底层（0 ~ 1.8，1.00 = 标准）。
+# 调高更有实感，但超过 1.25 左右，锁死 / ABS 的对比会变弱。
 trigger_floor = %(trigger_floor).2f
 
-# 右扳机：油门压力底层（0 ~ 0.35 比较合理）。踩多少震多少，
+# 右扳机：油门压力底层（0 ~ 2.3，1.00 = 标准）。踩多少震多少，
 # 调高更有实感，但后轮打滑 / 推头的对比会变弱。
 throttle_floor = %(throttle_floor).2f
 
@@ -216,7 +219,7 @@ trigger_event = %(trigger_event).2f   # 扳机事件：锁死 / ABS / 后轮打�
 understeer_gain = %(understeer_gain).2f
 
 # 两个握把：失控强度（车尾横滑 / 甩尾 / 打转时震，两个握把同强度）。
-# 1.0 是参考项目的基准，0 = 关掉失控通道。
+# 1.0 是标准强度，0 = 关掉失控通道。
 loss_gain = %(loss_gain).2f
 """ % DEFAULT_TUNING
 
@@ -492,6 +495,8 @@ class HapticsEngine:
 
         road = _scale(_num(snap.g_vibrations),
                       G_VIBRATION_DEADZONE, G_VIBRATION_FULL) ** GRIP_ROAD_CURVE
+        road_amplitude = (road * self.tuning["grip_road"]
+                          * GRIP_ROAD_REFERENCE)
         speed = _num(snap.speed_kmh)
         # 停车时把"压力底层"关掉：停着踩满刹车也一直震，像故障
         floor_factor = _scale(speed, FLOOR_SPEED_OFF, FLOOR_SPEED_FULL)
@@ -501,11 +506,11 @@ class HapticsEngine:
         # 不会完全消失，也不会和失控抢成一片糊。
         loss = self._update_loss(snap, dt, first_tick, speed)
         left_grip, left_grip_trace = _mix([
-            ("路面", road * self.tuning["grip_road"]),
+            ("路面", road_amplitude),
             ("失控", loss),
         ])
         right_grip, right_grip_trace = _mix([
-            ("路面", road * self.tuning["grip_road"]),
+            ("路面", road_amplitude),
             ("失控", loss),
         ])
         # 最近 1 秒的握把峰值，只给 --status 看：1Hz 打一行很容易错过短事件
@@ -520,7 +525,8 @@ class HapticsEngine:
         abs_active = max(abs_flag, abs_pulse) > ABS_GATE
 
         left_trigger_parts = [
-            ("刹车压力", brake * self.tuning["trigger_floor"] * floor_factor),
+            ("刹车压力", brake * self.tuning["trigger_floor"]
+             * PRESSURE_FLOOR_REFERENCE * floor_factor),
         ]
 
         if abs_active:
@@ -611,7 +617,8 @@ class HapticsEngine:
                                        * min(1.0, dt / UNDERSTEER_RELEASE))
 
         right_trigger, right_trigger_trace = _mix([
-            ("油门压力", throttle * self.tuning["throttle_floor"] * floor_factor),
+            ("油门压力", throttle * self.tuning["throttle_floor"]
+             * THROTTLE_FLOOR_REFERENCE * floor_factor),
             ("后轮打滑", self._rear_level),
             ("推头", self._understeer_level),
         ])
@@ -847,7 +854,7 @@ def main():
     print("看这几个地方")
     print("=" * 62)
     print("  滑行        四个都应该是 0（不能有底噪）")
-    print("  轻刹 30%    左扳机跟着 trigger_floor 走（默认约 6%，个人配置会更高）")
+    print("  轻刹 30%    左扳机跟着 trigger_floor 走（默认约 8%，即 1.00 × 0.28）")
     print("  前轮锁死    左扳机 90% 上下，来源是“前轮锁死 + 刹车压力”")
     print("  ABS 动作    左扳机 90% 上下，来源是“ABS 介入 + 刹车压力”")
     print("  后轮打滑    右扳机跟着滑移量走，滑得越多越强")
