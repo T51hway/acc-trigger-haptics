@@ -3,137 +3,315 @@
 English | [简体中文](README.zh-CN.md)
 
 > Unofficial personal project. Not affiliated with Kunos Simulazioni or 505 Games.
->
 > This project uses AI-generated content (code, documentation and tuning). It may contain
-> errors; review and test before use.
+> errors; read the [disclaimer](#disclaimer) before use.
 
 Adds Xbox controller **trigger haptics** to Assetto Corsa Competizione (ACC).
-ACC only rumbles the two grips; this program reads the game's telemetry and uses
-all four motors: grips for road feel, triggers for braking, throttle and tyre limits.
+ACC only rumbles the two grips; this program reads the game's telemetry and uses all four
+motors: grips for road feel, triggers for braking, throttle and tyre limits.
+
+**Current version: v0.2.0** · [Download the latest release](https://github.com/T51hway/acc-trigger-haptics/releases/latest) · about 10 MB, single file, no Python required.
+
+![Control panel](docs/panel.en.png)
+
+*UI illustration: all four lamps green, sliders at their defaults. In real use the ACC telemetry lamp stays amber until you are on track.*
 
 ---
 
-## Quick start (about 3 minutes)
+## What it gives you, what it takes away
 
-Before you start: connect the controller over Bluetooth or USB-C, and turn **Steam Input** off in Steam.
+**It gives you:**
 
-1. Run **`ACC Trigger Haptics.exe`**.
-2. Click **Install takeover** — this copies a small proxy DLL into the ACC folder,
-   so the game can no longer overwrite the trigger rumble (one time only).
-3. Get on track in ACC and click **Start haptics**.
-4. All four lamps green (Proxy DLL / Controller / ACC telemetry / Haptics) means it is working.
-5. Drag the sliders to tune; changes apply within a second, no restart needed.
-
-Running from source instead? The two helper scripts `开启接管.bat` and `恢复原生.bat`
-do the same install/restore job.
-
----
-
-## What each motor does
-
-| Motor | Feedback |
+| Channel | Feedback |
 | --- | --- |
-| Left trigger | Brake pressure; short "tick-tick" when a front wheel locks or ABS kicks in |
+| Left trigger | Brake pressure; a short "tick-tick" when a front wheel locks or ABS kicks in |
 | Right trigger | Throttle pressure; rear wheelspin; understeer (front slipping more than rear) |
 | Left grip | Left-side road texture; rear slide / loss of control |
 | Right grip | Right-side road texture; rear slide / loss of control |
 
-Understeer (front push) also requires both front wheels to be actually sliding and a slip-vibration
-confidence, so ordinary cornering and a single front wheel over a kerb stay quiet.
+**It takes away:**
 
-Both grips rumble together when the rear lets go (oversteer, spin, four-wheel drift), getting
-stronger as the slide grows. Only actual wheel slip triggers it; steering input alone does not.
-Low-speed spins count too: the speed gate fades in from 14 to 35 km/h, so a 25 km/h spin still
-reports. Off-track driving without slip is not reported, and a four-wheel lock stays on the
-left-trigger lock pulse.
+After you install the takeover, **ACC's own controller rumble is blocked completely**;
+all four motors are driven by this program. The grip feel is this program's own mix,
+not ACC's native rumble. If you prefer the native grip feel, click **Restore native** —
+but **trigger haptics stop working too**, because ACC starts overwriting the triggers every frame again.
 
-The brake/throttle floor fades out below 5 km/h, so pressing the pedals at a standstill stays quiet.
+The grip feel has only been tested on the author's controller. Different controllers and
+different hands will feel different; start with the defaults and tune from there.
+
+A steering wheel / base is unaffected: it uses DirectInput force feedback, a separate channel
+from controller rumble.
+
+---
+
+## 3-minute setup
+
+### Before you start
+
+- Windows 10 / 11
+- Xbox One / Xbox One S / Xbox Series controller (Xbox 360 has no trigger motors)
+- Connect the controller over Bluetooth or USB-C; the original Xbox One has no Bluetooth and is
+  micro-USB wired only (One S is micro-USB; only Series uses USB-C). Bluetooth and USB-C
+  on One S / Series have both been tested; the original One over USB is untested.
+- Turn off **Steam Input** in Steam:
+  Steam → Settings → Controller → Enable Steam Input for Xbox controllers (off).
+  If you also see `Xbox Controller Enhanced Features Driver`, turn that off too.
+- ACC has only been tested on Steam (Microsoft Store version untested).
+  **Quit ACC completely** (not minimized) before installing the takeover.
+
+### Steps
+
+1. Download `ACC Trigger Haptics.exe` from
+   [Releases](https://github.com/T51hway/acc-trigger-haptics/releases/latest).
+2. Put it in a **normal folder**, for example `D:\ACC Trigger Haptics\`.
+   Do not put it in `C:\Program Files`, and do not run it straight from the zip —
+   the program writes its settings and log next to itself.
+3. Double-click it. The first run may show Windows SmartScreen:
+   click **More info** → **Run anyway**.
+4. Click **Install takeover**. It copies a small proxy DLL into the ACC folder
+   that does one thing: stops ACC from zeroing the controller rumble every frame.
+   **It takes effect the next time ACC starts**; if ACC is running, the panel asks you to quit it first.
+5. Start ACC and get on track (not the main menu).
+6. Back in the panel, click **Start haptics**.
+7. Four green lamps = Proxy DLL / Controller / ACC telemetry / Haptics all working.
+8. Drag the sliders to tune; changes apply within a second, no game restart needed.
+
+> You can minimize the panel, but **do not close it**. Closing stops the haptics and zeroes
+> the motors first; killing it from Task Manager may leave the motors running.
+> There is no tray icon and no auto-start.
+
+---
+
+## What the takeover actually changes
+
+It adds one file:
+
+```
+...\Assetto Corsa Competizione\AC2\Binaries\Win64\xinput1_3.dll
+```
+
+- No existing files are changed, no driver is installed, no registry keys are written
+- Controller reads are forwarded unchanged to the system `xinput1_3.dll`; input is unaffected
+- Only `XInputSetState` (the call ACC uses to write rumble) is intercepted and returns success without forwarding
+- Delete or rename the file to restore everything; **Restore native** renames it to `xinput1_3.dll.off`
+
+For the full explanation (including how to compile it yourself), see
+[`tools/xinput_proxy/README.md`](tools/xinput_proxy/README.md).
+
+**Steam file verification may report one unexpected file**: that is the added DLL, which is expected.
+If you care, click **Restore native**, delete `xinput1_3.dll.off`, then verify.
+
+### Manual install / restore
+
+If the panel is broken or cannot find ACC:
+
+- Install (when running from source): copy `tools\xinput_proxy\xinput1_3.dll`
+  into the `Win64` folder above
+- Restore: rename `xinput1_3.dll` to `xinput1_3.dll.off`, or delete it
+
+### Uninstall order (important)
+
+1. Click **Restore native** in the panel
+2. Close the panel
+3. Delete the exe, `手感设置.toml`, `panel.log`, `panel-settings.json`
+4. If `xinput1_3.dll.off` is still in the `Win64` folder, delete it too
+
+**Do not** just delete the exe. If the proxy DLL stays in the game folder, ACC thinks rumble
+is still taken over, so neither the grips nor the triggers rumble — and nothing tells you why.
+
+---
+
+## Compatibility
+
+| Item | Status |
+| --- | --- |
+| Windows | 10 / 11 |
+| Controller | Xbox One (micro-USB wired only), Xbox One S / Series X\|S (Bluetooth or USB-C) |
+| Original Xbox One controller | ⚠️ No Bluetooth; micro-USB wired only. Not specifically tested |
+| Xbox 360 controller | ❌ No trigger motors |
+| Xbox Elite 2 | ⚠️ Untested |
+| Third-party "Xbox-compatible" controllers (8BitDo, Flydigi, BETOP, etc.) | ⚠️ Untested. Many have no trigger motors, or do not use Microsoft's HID report, so they may not respond at all |
+| Official Xbox Wireless Adapter | ⚠️ Untested |
+| Wheel + controller connected at the same time | Only the Xbox controller is driven; the wheel is unaffected. Multiple controllers are not explicitly handled |
+| ACC platform | Steam only tested; Microsoft Store version untested |
+| ACC version | v0.2.0 tested on the 2026-11 ACC build; if rumble becomes intermittent after a big game update, reinstall the takeover |
+
+---
+
+## Troubleshooting
+
+Check the four lamps first:
+
+![Panel before starting](docs/panel-idle.en.png)
+
+*Real first-launch state (the takeover is installed in this example): haptics not started, no ACC telemetry yet.*
+
+| Lamp | Green means | If it is not green |
+| --- | --- | --- |
+| Proxy DLL | Installed | Click **Install takeover**; quit ACC completely first |
+| Controller | Connected | Press a button on the controller; check Bluetooth pairing; make sure Steam Input is off |
+| ACC telemetry | Live | You must be on track; no data in the main menu / while paused is normal |
+| Haptics | Running | Click **Start haptics** |
+
+**All four green, but the triggers do not vibrate**
+
+- Is Steam Input on again?
+- Did you turn vibration off in the controller firmware / Xbox Accessories?
+- Is the USB cable charge-only? Try a data cable.
+- At very low battery the trigger motors may not run; replace the battery or plug in.
+- Did an ACC update overwrite the proxy DLL? Reinstall the takeover.
+
+**It worked before, but became stuttery after an ACC update**
+
+Reinstall the takeover (the update may have replaced `xinput1_3.dll`). Quit ACC completely first.
+
+**The telemetry lamp is off**
+
+ACC must be on track; there is no data in the main menu or while paused.
+If ACC runs as administrator, run the panel as administrator too.
+
+**"A motor driver is already running"**
+
+You have two panels / two rumble programs open. Close the other one; two writers fight
+over the controller.
+
+**Using it with SimHub, DSX, etc.**
+
+They may also write to the same controller motors; the result is messy, intermittent or
+fighting rumble. Run only one controller-rumble tool at a time.
+
+**Getting ACC's native rumble back**
+
+Click **Restore native**. Note that trigger haptics stop working too, because ACC starts
+zeroing the triggers every frame again. The wheel is unaffected.
+
+**Still not working**
+
+Send `panel.log` (next to the exe) to
+[Issues](https://github.com/T51hway/acc-trigger-haptics/issues),
+along with: ACC version, controller model, Bluetooth or wired, and Windows version.
+The log contains only runtime status and local paths, no account credentials.
 
 ---
 
 ## Tuning
 
-Six sliders in the panel, saved automatically:
+Six sliders in the panel, saved as you drag:
 
-| Slider | What it does | Code default |
-| --- | --- | --- |
-| Road texture | Grip rumble from the road surface | 0.21 |
-| Brake floor | Left trigger follows brake pressure | 0.20 |
-| Throttle floor | Right trigger follows throttle | 0.15 |
-| Event strength | Pulse strength for lock / ABS / wheelspin | 0.75 |
-| Understeer gain | Right trigger strength when the front pushes; 0 = off | 1.00 |
-| Loss of control | Both grips when the rear slides / spins; 0 = off | 1.00 |
+| Slider | What it does | Default | Suggested range |
+| --- | --- | --- | --- |
+| Road texture | Grip rumble from the road surface | 0.21 | 0 – 0.6 |
+| Brake floor | Left trigger follows brake pressure | 0.20 | 0 – 0.35 |
+| Throttle floor | Right trigger follows throttle | 0.15 | 0 – 0.35 |
+| Event strength | Pulse strength for lock / ABS / wheelspin | 0.75 | 0 – 1.0 |
+| Understeer gain | Right trigger strength when the front pushes; 0 = off | 1.00 | 0 – 1.0 |
+| Loss of control | Both grips when the rear slides / spins; 0 = off | 1.00 | 0 – 1.0 |
 
-You can also edit `手感设置.toml` directly (it sits next to the exe).
-Only change the numbers on the right-hand side of `=`.
+**Above 0.6 the motors tend to saturate**, flattening kerbs, left/right differences and
+strong-vs-weak contrast. More is not better.
 
----
+**How to tune:**
 
-## Panel
+- Road too noisy / grips always buzzing: lower **Road texture**
+- Triggers feel dead: raise **Brake floor** / **Throttle floor**, but stay below 0.35,
+  otherwise the lock / ABS contrast gets weaker
+- Lock / ABS not obvious enough: raise **Event strength**
+- Understeer false alarms: lower **Understeer gain** or set it to 0 (off)
+- Loss-of-control false alarms in normal corners: lower **Loss of control** or set it to 0
 
-- Four status lamps: proxy DLL / controller / ACC telemetry / haptics
-- Six sliders, saved as you drag
-- Start / stop haptics
-- Install / restore the takeover DLL (refuses while ACC is running)
-- Language switch (English / 中文) at the bottom left
-- Version number at the bottom right
+**Editing the file directly:**
 
-Closing the window stops the haptics and zeroes the motors first.
-Killing the process from Task Manager may leave the motors running — close it with the X.
+`手感设置.toml` (Chinese for "feel settings") sits next to the exe.
+**A fresh install does not create this file automatically**; drag any slider once and it appears.
+Only change the numbers on the right-hand side of `=`; everything after `#` is a comment.
+Save the file and it applies within a second.
 
-Errors are written to `panel.log` next to the executable.
-
----
-
-## Requirements
-
-- Windows 10 / 11
-- Xbox One or Xbox Series controller (Xbox 360 has no trigger motors)
-- **Bluetooth or USB-C connection** — both tested
-- **Steam Input must be off**, otherwise it swallows the trigger commands
-- **The takeover DLL must be installed**; disabling in-game vibration alone is not enough
-
-The packaged exe does not require Python.
+**Restoring defaults:** quit the program, delete `手感设置.toml`, and start it again;
+or drag all six sliders back to the defaults above.
 
 ---
 
-## FAQ
+## 2-minute self-check
 
-**No trigger vibration at all**
-Check the "Proxy DLL" lamp first. Without it, ACC overwrites the trigger rumble every frame.
-Also make sure Steam Input is off. If you use USB-C, make sure it is a data cable, not a
-charge-only cable.
+No full lap needed. Do this once to confirm every channel:
 
-**It worked before, but became stuttery after an ACC update**
-Run the takeover install again (the update may have replaced the DLL).
-
-**How do I get ACC's native rumble back?**
-Click **Restore native** in the panel, or run `恢复原生.bat`. Wheels are unaffected.
-
-**Steam file verification complains**
-The takeover DLL is an added file, so Steam reports one unexpected file. That is expected;
-delete or rename it and the warning goes away.
+1. **Lock**: set ABS to its lowest setting or off, brake hard in a straight line until the front locks → short ticks on the left trigger
+2. **ABS**: set ABS high, brake hard → intermittent ticks on the left trigger
+   (with high ABS the wheels rarely lock; that is normal)
+3. **Rear wheelspin**: low-speed, full throttle out of a corner → right trigger rumbles; less when TC intervenes
+4. **Understeer**: brake late and add steering → the right trigger rumbles continuously
+5. **Loss of control**: full throttle out of a corner until the rear slides → both grips rumble together
+6. **Road feel**: drive normally for a bit → both grips give a continuous road texture
 
 ---
 
-## Known limitations
+## What it does not do / known limitations
 
-- Off-track driving without wheel slip is not reported; the cue is driven by slip angle
+- Reads ACC's shared-memory telemetry only (like SimHub); it does not write to game memory
+  and does not change vehicle physics
+- Off-track driving without wheel slip is not reported; the cue is driven by slip angle, not surface type
 - Low-speed spins fade out below about 14 km/h, so parking-lot manoeuvres stay quiet
 - Four-wheel lock is left to the left-trigger lock pulse, not duplicated on the grips
-- Long sessions, and Bluetooth reconnects, have not been endurance-tested
-- The official wireless adapter is untested
+- Understeer / loss of control are heuristic; extreme situations may false-positive or miss.
+  The thresholds live in code and are not all exposed
+- The grip rumble is this program's own mix, **with no native fallback**; if you dislike it,
+  **Restore native**, but then the triggers stop working
+- Long sessions and Bluetooth reconnects have not been endurance-tested
+- The official wireless adapter, Elite 2 and third-party controllers are untested
+- Trigger motors use more battery; Bluetooth battery life will be shorter
+- No tray icon, no auto-start; the panel must stay open (minimizing is fine)
+
+**Multiplayer / leagues:** it does not modify vehicle data and does not read data the game
+does not expose; it is essentially a tactile display. But it adds a DLL to the game folder,
+and some leagues / platforms have rules about modifying game files. Check your rules before
+racing. This project is not responsible for bans or league penalties.
 
 ---
 
-## Run from source (optional)
+## Disclaimer
 
-Requires Python 3.11+; the panel also needs a full Python build with tkinter.
+This is an unofficial personal project. It is not affiliated with, endorsed by, or authorized
+by Kunos Simulazioni, 505 Games, or Microsoft / Xbox.
+
+The project is provided "as is", without warranty of any kind, express or implied.
+**To the maximum extent permitted by applicable law**, the author is not liable for any direct
+or indirect damage arising from the use or inability to use this project, including but not
+limited to controller motor wear or other hardware damage, battery wear, corrupted game files,
+lost saves or data, account bans, league penalties, or problems caused by ACC updates, drivers,
+Bluetooth connections, or conflicts with third-party software.
+
+This project contains AI-generated content and may contain errors. Installing the takeover adds
+a proxy DLL to the ACC folder; this may trigger Steam file verification warnings, antivirus
+false positives, or violate league/platform rules about modifying game files. Check and follow
+the applicable rules before use. Please only use it with a legitimate copy of ACC.
+
+**Nothing in this notice excludes or limits any liability that cannot be excluded or limited
+by law**, including liability for intentional misconduct or gross negligence, or for personal
+injury where such liability cannot be waived. If you do not accept these terms, do not use the
+project. The code is released under the MIT License; this notice does not replace the terms in `LICENSE`.
+
+---
+
+## Run from source / build (optional)
+
+Requires Python 3.11+ with a full **tkinter** build (not the Microsoft Store placeholder).
 
 ```
 python src/main.py      # console version
 python src/panel.py     # graphical panel
 ```
+
+Build (Windows, PyInstaller):
+
+```
+python -m pip install pyinstaller
+python -m PyInstaller --noconfirm --clean --onefile --windowed --name "ACC Trigger Haptics" --paths src --add-data "tools\xinput_proxy\xinput1_3.dll;tools\xinput_proxy" src\panel.py
+```
+
+The output is `dist\ACC Trigger Haptics.exe`, ready to upload to a release. When running from source,
+`开启接管.bat` / `恢复原生.bat` do the same install/restore job. Note that these scripts
+only check a few common Steam library paths; if the game is installed elsewhere, add your
+path to the script. If unsure, use the panel's **Install takeover**, which reads the Steam registry.
 
 ---
 
