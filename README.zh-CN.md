@@ -22,11 +22,10 @@
 
 - exe 指纹（SHA256）：`863b97255c9a5eb656f0ecfa6436c60315a6c6e4b018859c6b3edf50fe62cadb`
 - 代理 DLL 指纹（SHA256）：`8e284775850c9cba345b2b9912a71a45050f84c9186a0387387f5105cd4afe6c`
-- 多引擎扫描结果（VirScan，30 个引擎）：[v0.2.0 的 exe](https://www.virscan.org/report/4e4482472f3b62f87246e50194903a372bc64e93bd57e0fdf6c3069cb45a6cd0) · [代理 DLL](https://www.virscan.org/report/8e284775850c9cba345b2b9912a71a45050f84c9186a0387387f5105cd4afe6c)。v0.2.2 的 exe 尚未重新扫描。
 - 代理 DLL 只有 60 行 C 源码：[`proxy.c`](tools/xinput_proxy/proxy.c)，编译命令在同目录的 README
 - 下载后双击 `校验哈希.bat`，它会比对上面的指纹并告诉你是否一致（只下载 exe 时校验 exe；从源码使用时会连代理 DLL 一起校验）
 
-如果能访问 VirusTotal，也可以自己上传同一个文件，和上面的指纹对照。
+没有固定的多引擎扫描报告：exe 每次重新打包哈希都会变。需要的话，可以把 exe / 代理 DLL 上传到 VirusTotal，对照上面的指纹。
 
 ---
 

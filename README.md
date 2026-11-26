@@ -24,11 +24,11 @@ The program is not code-signed, so Windows may warn that the publisher is unknow
 
 - exe SHA256: `863b97255c9a5eb656f0ecfa6436c60315a6c6e4b018859c6b3edf50fe62cadb`
 - Proxy DLL SHA256: `8e284775850c9cba345b2b9912a71a45050f84c9186a0387387f5105cd4afe6c`
-- Multi-engine scan (VirScan, 30 engines): [v0.2.0 exe](https://www.virscan.org/report/4e4482472f3b62f87246e50194903a372bc64e93bd57e0fdf6c3069cb45a6cd0) · [proxy DLL](https://www.virscan.org/report/8e284775850c9cba345b2b9912a71a45050f84c9186a0387387f5105cd4afe6c). The v0.2.2 exe has not been rescanned yet.
 - The proxy DLL is ~60 lines of C: [`proxy.c`](tools/xinput_proxy/proxy.c); build command in the README next to it
 - After downloading, double-click `校验哈希.bat` ("verify hash"): it compares the fingerprint above and tells you whether it matches (the exe only for a release-only download; the proxy DLL too when running from source)
 
-If you can reach VirusTotal, you can upload the same file yourself and compare it with the SHA256 above.
+There is no fixed multi-engine scan report (the hash changes on every rebuild).
+If you want one, upload the exe / proxy DLL to VirusTotal yourself and compare it with the SHA256 values above.
 
 ---
 
