@@ -34,16 +34,17 @@ if not errorlevel 1 (
   exit /b 1
 )
 
-if not exist "%GAME%\xinput1_3.dll" (
-  echo  Not installed. Nothing to restore.
+rem ---- restore through panel.py (same ownership checks as the panel) ----
+set PYEXE=C:\Users\Tsihway\.workbuddy\binaries\python\versions\3.13.12\python.exe
+if not exist "%PYEXE%" set PYEXE=C:\Users\Tsihway\AppData\Roaming\uv\python\cpython-3.13.3-windows-x86_64-none\python.exe
+if not exist "%PYEXE%" set PYEXE=C:\Users\Tsihway\AppData\Roaming\uv\python\cpython-3.12.15-windows-x86_64-none\python.exe
+if not exist "%PYEXE%" set PYEXE=python
+
+"%PYEXE%" src\panel.py --restore "%GAME%"
+if errorlevel 1 (
+  echo  [!] Restore was refused or failed. Nothing was changed.
 ) else (
-  if exist "%GAME%\xinput1_3.dll.off" del /q "%GAME%\xinput1_3.dll.off"
-  ren "%GAME%\xinput1_3.dll" "xinput1_3.dll.off"
-  if errorlevel 1 (
-    echo  [!] Rename failed. Try running this bat as administrator.
-  ) else (
-    echo  Done. ACC native rumble is back. Trigger rumble will be overwritten again.
-  )
+  echo  Done. ACC native rumble is back. Trigger rumble will be overwritten again.
 )
 
 echo.

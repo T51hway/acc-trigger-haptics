@@ -40,7 +40,7 @@ if not errorlevel 1 (
   exit /b 1
 )
 
-rem ---- install ----
+rem ---- install through panel.py (same ownership checks as the panel) ----
 if not exist "tools\xinput_proxy\xinput1_3.dll" (
   echo  [!] tools\xinput_proxy\xinput1_3.dll is missing.
   echo.
@@ -48,10 +48,14 @@ if not exist "tools\xinput_proxy\xinput1_3.dll" (
   exit /b 1
 )
 
-if exist "%GAME%\xinput1_3.dll.off" del /q "%GAME%\xinput1_3.dll.off"
-copy /Y "tools\xinput_proxy\xinput1_3.dll" "%GAME%\xinput1_3.dll" >nul
+set PYEXE=C:\Users\Tsihway\.workbuddy\binaries\python\versions\3.13.12\python.exe
+if not exist "%PYEXE%" set PYEXE=C:\Users\Tsihway\AppData\Roaming\uv\python\cpython-3.13.3-windows-x86_64-none\python.exe
+if not exist "%PYEXE%" set PYEXE=C:\Users\Tsihway\AppData\Roaming\uv\python\cpython-3.12.15-windows-x86_64-none\python.exe
+if not exist "%PYEXE%" set PYEXE=python
+
+"%PYEXE%" src\panel.py --install "%GAME%"
 if errorlevel 1 (
-  echo  [!] Copy failed. Try running this bat as administrator.
+  echo  [!] Install was refused or failed. Nothing was changed.
 ) else (
   echo  Done. ACC rumble is now blocked; trigger rumble is ours alone.
 )

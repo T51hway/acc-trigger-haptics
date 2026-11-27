@@ -34,8 +34,12 @@ import time
 import tomllib
 from pathlib import Path
 
-import tkinter as tk
-from tkinter import messagebox, ttk
+try:
+    import tkinter as tk
+    from tkinter import messagebox, ttk
+except ImportError:                     # 源码启动脚本只需要代理装卸，不建窗口
+    tk = None
+    messagebox = ttk = None
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
@@ -1157,7 +1161,69 @@ class Panel:
         self.root.destroy()
 
 
+def proxy_cli(argv):
+    """给源码启动脚本用的小桥：复用面板同一套守卫，不创建窗口。
+
+    只接收一个已定位的游戏目录；ACC 是否在跑、目录是否有效仍由
+    .bat 和面板界面负责检查。这里只管代理文件和备份。
+    """
+    if len(argv) != 2 or argv[0] not in ("--install", "--restore"):
+        print("Usage: python src/panel.py --install|--restore <ACC Win64 folder>")
+        return 2
+
+    action, folder = argv[0], Path(argv[1])
+    if not folder.is_dir():
+        print("Game folder not found: %s" % folder)
+        return 1
+
+    if action == "--install":
+        source = PROXY_SOURCE if PROXY_SOURCE.exists() else PROXY_LOCAL
+        try:
+            result = install_proxy(folder, source)
+        except ProxyError as exc:
+            if exc.body_key == "dlg_missing_body":
+                print("Proxy source DLL is missing: %s" % source)
+            else:
+                print("Refusing to install: the existing xinput1_3.dll is "
+                      "not recognized as this project's proxy. Nothing was "
+                      "changed.")
+            return 1
+        except Exception as exc:
+            print("Install failed: %s" % exc)
+            return 1
+        if result.get("backup_preserved"):
+            print("Existing backup kept untouched: %s"
+                  % (folder / PROXY_BACKUP))
+        print("Takeover installed: ACC rumble is now blocked.")
+        return 0
+
+    try:
+        result = restore_proxy(folder)
+    except ProxyError as exc:
+        if exc.body_key == "dlg_rename_denied_body":
+            print("Restore failed: the file is in use; make sure ACC is closed.")
+        else:
+            print("Refusing to restore: the xinput1_3.dll is not recognized "
+                  "as this project's proxy. Nothing was changed.")
+        return 1
+    except Exception as exc:
+        print("Restore failed: %s" % exc)
+        return 1
+
+    if result["action"] == "nothing":
+        print("Nothing to restore.")
+    elif result["action"] == "moved":
+        print("Restored; current proxy moved to: %s" % result["target"])
+        print("Existing backup kept untouched: %s" % result["kept_backup"])
+    else:
+        print("Restored: ACC's own rumble is back.")
+    return 0
+
+
 def main():
+    if len(sys.argv) > 1 and sys.argv[1] in ("--install", "--restore"):
+        return proxy_cli(sys.argv[1:])
+
     try:
         ctypes.windll.shcore.SetProcessDpiAwareness(1)
     except Exception:
