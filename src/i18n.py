@@ -23,6 +23,7 @@ MESSAGES = {
     # ── 面板：状态灯 ──────────────────────────────────────────────
     "lamp_proxy_on": ("代理 DLL：已安装", "Proxy DLL: installed"),
     "lamp_proxy_off": ("代理 DLL：未安装", "Proxy DLL: not installed"),
+    "lamp_proxy_unknown": ("代理 DLL：无法确认归属", "Proxy DLL: unrecognized"),
     "lamp_pad_on": ("手柄：已连接", "Controller: connected"),
     "lamp_pad_wait": ("手柄：等待连接", "Controller: waiting"),
     "lamp_pad_off": ("手柄：未启动", "Controller: not started"),
@@ -60,16 +61,40 @@ MESSAGES = {
     "log_value_bad": ("%s 需要一个数字，已恢复原值。",
                       "%s needs a number; reverted to the previous value."),
     "log_save_fail": ("保存手感失败：%s", "Saving feel settings failed: %s"),
+    "save_invalid_toml": ("候选内容不是合法 TOML，本次没有写入（原文件保持不变）：%s",
+                          "The candidate content is not valid TOML; nothing was written (the original file is unchanged): %s"),
+    "save_not_applied": ("候选内容校验失败，本次没有替换原文件：%s",
+                         "Candidate verification failed; the original file was not replaced: %s"),
     "log_starting": ("正在启动震动……", "Starting haptics…"),
     "log_stopping": ("正在停止……", "Stopping…"),
     "log_proxy_missing": ("警告：代理 DLL 不在 ACC 目录，扳机会被 ACC 每帧冲掉",
                           "Warning: proxy DLL is not in the ACC folder; ACC will overwrite the triggers every frame"),
+    "log_proxy_unknown_warn": ("警告：ACC 目录里的 xinput1_3.dll 无法确认是本项目的代理，未接管时扳机会被 ACC 冲掉",
+                               "Warning: the xinput1_3.dll in the ACC folder is not recognized as this project's proxy; ACC will overwrite the triggers while takeover is off"),
     "log_installed": ("已安装接管：ACC 的震动写入已被屏蔽（下次启动 ACC 生效）",
                       "Takeover installed: ACC rumble is blocked (takes effect next launch)"),
+    "log_backup_preserved": ("已保留原有备份，没有覆盖或删除：%s",
+                             "Existing backup kept untouched: %s"),
     "log_restored": ("已恢复原生：ACC 自己的震动回来了（下次启动 ACC 生效）",
                      "Restored: ACC's own rumble is back (takes effect next launch)"),
+    "log_restored_moved": ("已恢复原生；当前的代理文件改名为 %s，原有备份 %s 没有被改动",
+                           "Restored; the current proxy was renamed to %s and the existing backup %s was left untouched"),
     "log_nothing_to_restore": ("本来就没有接管，无需恢复", "Nothing to restore"),
     "log_reloaded": ("手感设置已重新读取", "Feel settings reloaded"),
+    "log_reload_kept": ("手感设置读取失败，继续使用上次成功的设置；修好文件后会自动生效",
+                        "Could not read feel settings; keeping the last good values. It will reload once the file is fixed"),
+    "log_loop_exit": ("后台循环异常退出：%s: %s",
+                      "Background loop stopped after an error: %s: %s"),
+    "log_zero_fail": ("计算失败后清零没有成功：%s",
+                      "Zeroing after a calculation error failed: %s"),
+    "log_reset_fail": ("计算失败后重置引擎状态没有成功：%s",
+                       "Resetting engine state after a calculation error failed: %s"),
+    "log_cleanup_zero_fail": ("退出清理：清零失败（继续做后续清理）：%s",
+                              "Exit cleanup: zeroing failed (continuing with the remaining steps): %s"),
+    "log_cleanup_driver_fail": ("退出清理：停止马达驱动失败（继续做后续清理）：%s",
+                                "Exit cleanup: stopping the motor driver failed (continuing): %s"),
+    "log_cleanup_telemetry_fail": ("退出清理：关闭遥测失败：%s",
+                                   "Exit cleanup: closing telemetry failed: %s"),
     "log_drive_started": ("震动已开始（手柄没连上时会每秒自动重连）",
                           "Haptics started (reconnecting once per second until the controller shows up)"),
     "log_drive_stopped": ("震动已停止，四个马达已清零", "Haptics stopped, all motors zeroed"),
@@ -96,6 +121,25 @@ MESSAGES = {
     "dlg_rename_denied_title": ("改名被拒绝", "Rename denied"),
     "dlg_rename_denied_body": ("文件可能被占用，请确认 ACC 已退出。",
                               "The file may be in use; make sure ACC is closed."),
+    "dlg_unknown_title": ("无法确认 DLL 归属", "Unrecognized DLL"),
+    "dlg_unknown_install_body": (
+        "ACC 目录里已经有一个 xinput1_3.dll，但内容不是本项目安装的代理。\n"
+        "为了安全，没有覆盖它，也没有改动任何 .off 备份。\n\n文件：%s\n\n"
+        "如果你确定要接管，请先手动备份或移走这个文件，再点一次。",
+        "The ACC folder already contains an xinput1_3.dll, but it is not this project's proxy.\n"
+        "Nothing was overwritten and no .off backup was touched.\n\nFile: %s\n\n"
+        "If you really want to take over, back up or move that file yourself, then try again."),
+    "dlg_unknown_restore_body": (
+        "ACC 目录里的 xinput1_3.dll 无法确认是本项目安装的代理。\n"
+        "为了不误删别人的文件，这次没有做任何改动。\n\n文件：%s",
+        "The xinput1_3.dll in the ACC folder is not recognized as this project's proxy.\n"
+        "Nothing was changed, so someone else's file cannot be deleted by mistake.\n\nFile: %s"),
+    "dlg_backup_kept_title": ("已保留原有备份", "Existing backup kept"),
+    "dlg_backup_kept_body": (
+        "已经恢复原生震动，但目录里原本就有一个无法确认归属的 .off 文件。\n"
+        "为了不破坏它，本次把代理改名成：\n%s\n\n原有备份保持原样：\n%s",
+        "Native rumble is restored, but the folder already had an unrecognized .off file.\n"
+        "To avoid damaging it, the proxy was renamed to:\n%s\n\nThe existing backup was left untouched:\n%s"),
     "dlg_no_acc_short": ("没在预设路径里找到 ACC。", "ACC was not found in the usual paths."),
 
     # ── 面板：语言 ────────────────────────────────────────────────
@@ -147,6 +191,10 @@ MESSAGES = {
     # ── 手感设置读取 ──────────────────────────────────────────────
     "cfg_read_fail": ("[手感] 读取 %s 失败：%s（先用默认值）",
                       "[Settings] Could not read %s: %s (using defaults)"),
+    "cfg_reload_fail": ("[手感] 读取 %s 失败：%s（继续使用上次成功的设置）",
+                        "[Settings] Could not read %s: %s (keeping the last good values)"),
+    "cfg_reload_missing": ("[手感] %s 不见了（继续使用上次成功的设置）",
+                           "[Settings] %s disappeared (keeping the last good values)"),
     "cfg_unknown_key": ("[手感] 不认识的设置项 %s，已忽略。",
                         "[Settings] Unknown key %s ignored."),
     "cfg_not_number": ("[手感] %s 不是数字，忽略。", "[Settings] %s is not a number; ignored."),

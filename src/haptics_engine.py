@@ -240,18 +240,32 @@ def config_path():
     return application_dir() / CONFIG_NAME
 
 
-def load_tuning(path=None):
-    """读手感设置。没有文件、格式坏了、值超范围，都退回默认值。"""
+def load_tuning_result(path=None, fallback=None):
+    """读手感设置，并告诉调用方这次到底读成功了没有。
+
+    返回 (ok, tuning)：
+        ok=True   文件读到了、TOML 也合法（缺文件且没有 fallback 也算首次启动的正常情况）
+        ok=False  读取/解析失败。给了 fallback 就原样返回它，让热更新继续用上次成功的值。
+
+    首次启动没有配置文件时 fallback 是 None，仍然返回内置默认值，行为和以前一致。
+    """
     tuning = dict(DEFAULT_TUNING)
     path = Path(path) if path is not None else config_path()
+    fallback = None if fallback is None else dict(fallback)
     try:
         with open(path, "rb") as handle:
             data = tomllib.load(handle)
     except FileNotFoundError:
-        return tuning
+        if fallback is not None:
+            print(t("cfg_reload_missing", path.name))
+            return False, fallback
+        return True, tuning
     except Exception as exc:
+        if fallback is not None:
+            print(t("cfg_reload_fail", path.name, exc))
+            return False, fallback
         print(t("cfg_read_fail", path.name, exc))
-        return tuning
+        return False, tuning
 
     for key in data:
         if key not in TUNING_RANGES:
@@ -272,7 +286,16 @@ def load_tuning(path=None):
         if clamped != value:
             print(t("cfg_out_of_range", key, value, low, high, clamped))
         tuning[key] = clamped
-    return tuning
+    return True, tuning
+
+
+def load_tuning(path=None, fallback=None):
+    """读手感设置。启动时没有文件、格式坏了、值超范围，都退回默认值。
+
+    fallback 只给热更新用：读取失败时返回上一次成功加载的设置，
+    避免文件写到一半或暂时损坏时把档位跳回默认值。
+    """
+    return load_tuning_result(path, fallback=fallback)[1]
 
 
 def write_default_config(path=None):

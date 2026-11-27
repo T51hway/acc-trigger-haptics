@@ -29,7 +29,9 @@ import sys
 import time
 
 from acc_telemetry import AccTelemetry
-from haptics_engine import HapticsEngine, config_path, load_tuning
+from haptics_engine import (
+    HapticsEngine, config_path, load_tuning, load_tuning_result,
+)
 from i18n import set_language, system_language, t
 from pad_driver import PadBusy, PadDriver, PadError
 from version import VERSION
@@ -139,9 +141,14 @@ def main():
                 mtime = _file_mtime(tuning_file)
                 if mtime is not None and mtime != config_mtime:
                     config_mtime = mtime
-                    engine.set_tuning(load_tuning(tuning_file))
-                    print(t("cfg_updated", _tuning_text(engine.tuning)),
-                          flush=True)
+                    # 读失败时 load_tuning_result 交回上一次成功的设置，
+                    # 不会把档位跳回默认值；文件修好后 mtime 再变就会重读。
+                    ok, tuning = load_tuning_result(
+                        tuning_file, fallback=engine.tuning)
+                    if ok:
+                        engine.set_tuning(tuning)
+                        print(t("cfg_updated", _tuning_text(engine.tuning)),
+                              flush=True)
 
             if snap is None:
                 # 没数据就不要喂旧快照。清零一次，引擎的包络也一起清掉。

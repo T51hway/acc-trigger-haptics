@@ -20,6 +20,7 @@
 """
 
 import ctypes
+import hashlib
 import json
 import logging
 import math
@@ -30,6 +31,7 @@ import subprocess
 import sys
 import threading
 import time
+import tomllib
 from pathlib import Path
 
 import tkinter as tk
@@ -41,7 +43,8 @@ sys.path.insert(0, str(HERE))
 
 from acc_telemetry import AccTelemetry                     # noqa: E402
 from haptics_engine import (                               # noqa: E402
-    HapticsEngine, config_path, load_tuning, write_default_config,
+    HapticsEngine, config_path, load_tuning, load_tuning_result,
+    write_default_config,
 )
 from pad_driver import PadBusy, PadDriver                  # noqa: E402
 from version import VERSION                                # noqa: E402
@@ -69,6 +72,23 @@ LOG_PATH = APP_DIR / "panel.log"
 SETTINGS_PATH = APP_DIR / "panel-settings.json"
 PROXY_SOURCE = BUNDLE_DIR / "tools" / "xinput_proxy" / "xinput1_3.dll"
 PROXY_LOCAL = APP_DIR / "tools" / "xinput_proxy" / "xinput1_3.dll"   # 兜底
+PROXY_NAME = "xinput1_3.dll"
+PROXY_BACKUP = PROXY_NAME + ".off"
+
+# 已知代理 DLL 的 SHA-256。当前仓库历史上的代理都是同一份；
+# 这里的哈希只是快速通道，真正判断归属还要看文件内容里的标记（见 _looks_like_our_proxy）。
+KNOWN_PROXY_HASHES = {
+    "8e284775850c9cba345b2b9912a71a45050f84c9186a0387387f5105cd4afe6c",
+}
+PROXY_EXPORT_NAMES = (
+    "XInputGetState",
+    "XInputSetState",
+    "XInputGetCapabilities",
+    "XInputEnable",
+    "XInputGetDSoundAudioDeviceGuids",
+    "XInputGetBatteryInformation",
+    "XInputGetKeystroke",
+)
 
 # ACC 目录探测：先试下面这些常见位置（本机就是第一个），
 # 再读 Steam 自己的库配置，兼容装在别的盘 / 自定义库的人。
@@ -241,9 +261,143 @@ def acc_running():
         return False
 
 
+class ProxyError(Exception):
+    """带双语文案键的代理装卸错误，界面层直接拿它弹窗。"""
+
+    def __init__(self, title_key, body_key, *body_args):
+        super().__init__(body_key)
+        self.title_key = title_key
+        self.body_key = body_key
+        self.body_args = body_args
+
+
+def _looks_like_our_proxy(data):
+    """按文件内容判断是不是本项目的代理 DLL。
+
+    只认两个特征：
+      1. 导出表里有完整的 XInput 函数名（旧版代理也一样）；
+      2. 二进制里带编译源文件名 `proxy.c`（本项目代理的编译产物特征）。
+    另外排除微软自带转发 DLL 的特征串，避免把系统文件误判成自己的。
+    """
+    if not data or not data.startswith(b"MZ"):
+        return False
+    lowered = data.lower()
+    if b"xinputforwarder" in lowered or b"xinput1_3.pdb" in lowered:
+        return False
+    if b"proxy.c\x00" not in data and b"proxy.c" not in data:
+        return False
+    return all(name.encode("ascii") + b"\x00" in data
+               for name in PROXY_EXPORT_NAMES)
+
+
+def proxy_kind(path):
+    """返回 none / ours / unknown。只读内容，不看文件名。"""
+    path = Path(path)
+    if not path.exists():
+        return "none"
+    try:
+        data = path.read_bytes()
+    except OSError:
+        return "unknown"
+    if hashlib.sha256(data).hexdigest() in KNOWN_PROXY_HASHES:
+        return "ours"
+    return "ours" if _looks_like_our_proxy(data) else "unknown"
+
+
+def proxy_state(folder=None):
+    """返回 (状态, 文件路径)。状态为 no_acc / none / ours / unknown。"""
+    if folder is None:
+        folder = acc_bin()
+    if not folder:
+        return "no_acc", None
+    path = Path(folder) / PROXY_NAME
+    return proxy_kind(path), path
+
+
 def proxy_installed():
-    folder = acc_bin()
-    return bool(folder and (folder / "xinput1_3.dll").exists())
+    """只有内容确认是本项目的代理才算“已安装”。"""
+    return proxy_state()[0] == "ours"
+
+
+def _unique_backup_path(folder):
+    """给改名后的代理找一个不冲突的名字，绝不覆盖已有文件。"""
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    base = "%s.%s" % (PROXY_BACKUP, stamp)
+    candidate = Path(folder) / base
+    index = 1
+    while candidate.exists():
+        candidate = Path(folder) / ("%s-%d" % (base, index))
+        index += 1
+    return candidate
+
+
+def install_proxy(folder, source):
+    """把代理复制进 ACC 目录，返回一些给界面用的提示信息。
+
+    遇到无法确认归属的同名 DLL 时直接拒绝，原文件和任何 .off 备份都不动。
+    复制先写临时文件再整体替换，复制/替换失败时原文件保持不变。
+    """
+    folder = Path(folder)
+    source = Path(source)
+    active = folder / PROXY_NAME
+    backup = folder / PROXY_BACKUP
+
+    if proxy_kind(source) != "ours":
+        raise ProxyError("dlg_missing_title", "dlg_missing_body")
+
+    existing = proxy_kind(active)
+    if existing == "unknown":
+        raise ProxyError("dlg_unknown_title", "dlg_unknown_install_body",
+                         str(active))
+
+    tmp = folder / ("%s.tmp-%d-%d" % (PROXY_NAME, os.getpid(),
+                                      time.time_ns()))
+    try:
+        shutil.copy2(source, tmp)
+        os.replace(tmp, active)
+    finally:
+        try:
+            if tmp.exists():
+                tmp.unlink()
+        except OSError:
+            pass
+
+    return {
+        "upgraded": existing == "ours",
+        "backup_preserved": backup.exists() and proxy_kind(backup) != "ours",
+    }
+
+
+def restore_proxy(folder):
+    """撤掉代理，恢复原生震动。
+
+    只处理内容确认属于本项目的代理；无法确认的文件一律不动。
+    如果已有 .off 备份：是代理就正常覆盖它；不是代理就保留原备份，
+    把当前代理改成一个带时间戳的新名字，两个文件都留给用户。
+    """
+    folder = Path(folder)
+    active = folder / PROXY_NAME
+    backup = folder / PROXY_BACKUP
+    kind = proxy_kind(active)
+    if kind == "none":
+        return {"action": "nothing"}
+    if kind == "unknown":
+        raise ProxyError("dlg_unknown_title", "dlg_unknown_restore_body",
+                         str(active))
+
+    try:
+        if backup.exists() and proxy_kind(backup) != "ours":
+            target = _unique_backup_path(folder)
+            os.replace(active, target)
+            return {
+                "action": "moved",
+                "target": str(target),
+                "kept_backup": str(backup),
+            }
+        os.replace(active, backup)
+    except PermissionError:
+        raise ProxyError("dlg_rename_denied_title", "dlg_rename_denied_body")
+    return {"action": "renamed"}
 
 
 def mtime_of(path):
@@ -253,20 +407,54 @@ def mtime_of(path):
         return None
 
 
+# TOML 合法的裸数字写法：普通整数/小数、指数、下划线分隔、十六/八/二进制、inf/nan。
+# 面板只写小数，但用户手改过的文件里可能是 1e0 或 1_0.0，必须原地替换而不是追加新键。
+_TOML_NUMBER = r"""
+    [+-]?
+    (?:
+        0[xX][0-9A-Fa-f](?:_?[0-9A-Fa-f])*
+      | 0[oO][0-7](?:_?[0-7])*
+      | 0[bB][01](?:_?[01])*
+      | (?:[0-9](?:_?[0-9])*)
+        (?:\.[0-9](?:_?[0-9])*)?
+        (?:[eE][+-]?[0-9](?:_?[0-9])*)?
+      | inf
+      | nan
+    )
+"""
+
+
+def _insert_top_level_key(text, key, value):
+    """把缺失的键放到第一张表之前，避免被写成表内键。"""
+    line = "%s = %.2f" % (key, value)
+    match = re.search(r"(?m)^[ \t]*\[", text)
+    if match is not None:
+        before = text[:match.start()]
+        if before and not before.endswith("\n"):
+            before += "\n"
+        return before + line + "\n" + text[match.start():]
+    if text and not text.endswith("\n"):
+        text += "\n"
+    return text + line + "\n"
+
+
 def save_values(path, values):
     """只改等号右边的数字，行内注释原样保留。
 
     先写同目录的临时文件再整体替换：主程序每秒读一次这个文件，
     直接原地改可能让它读到半截，数值会闪回默认值。
+    替换前先用 tomllib 解析候选内容；解析失败就抛错，原文件一个字节都不动。
     """
+    path = Path(path)
     if not path.exists():
         write_default_config(path)
     text = path.read_text(encoding="utf-8")
     for key, value in values.items():
         pattern = re.compile(
-            r"^(?P<head>[ \t]*%s[ \t]*=[ \t]*)(?P<num>[-+]?\d*\.?\d+)"
-            r"(?P<tail>[ \t]*(?:#.*)?)$" % re.escape(key),
-            re.MULTILINE,
+            r"^(?P<head>[ \t]*%s[ \t]*=[ \t]*)(?P<num>%s)"
+            r"(?P<tail>[ \t]*(?:[#].*)?)$"
+            % (re.escape(key), _TOML_NUMBER),
+            re.MULTILINE | re.VERBOSE,
         )
 
         def _replace(match, value=value):
@@ -274,19 +462,43 @@ def save_values(path, values):
 
         text, count = pattern.subn(_replace, text, count=1)
         if count == 0:
-            text = text.rstrip("\n") + "\n%s = %.2f\n" % (key, value)
+            # 已有这个键但写法不是裸数字（例如加引号/数组）时不要追加，
+            # 否则会变成重复键。让用户先把那一行改回来。
+            if re.search(r"(?m)^[ \t]*%s[ \t]*=" % re.escape(key), text):
+                raise ValueError(t("save_not_applied",
+                                   "%s (existing value is not a bare number)"
+                                   % key))
+            text = _insert_top_level_key(text, key, value)
+
+    try:
+        parsed = tomllib.loads(text)
+    except tomllib.TOMLDecodeError as exc:
+        raise ValueError(t("save_invalid_toml", exc)) from exc
+    for key, value in values.items():
+        actual = parsed.get(key)
+        if not isinstance(actual, (int, float)) \
+                or abs(float(actual) - float(value)) > 1e-9:
+            raise ValueError(t("save_not_applied",
+                               "%s (got %r)" % (key, actual)))
 
     tmp = path.with_name(path.name + ".tmp")
-    tmp.write_text(text, encoding="utf-8", newline="\n")
-    last_error = None
-    for _ in range(15):
+    try:
+        tmp.write_text(text, encoding="utf-8", newline="\n")
+        last_error = None
+        for _ in range(15):
+            try:
+                os.replace(tmp, path)
+                return
+            except PermissionError as exc:      # 主程序正在读，等它一下
+                last_error = exc
+                time.sleep(0.02)
+        raise last_error
+    finally:
         try:
-            os.replace(tmp, path)
-            return
-        except PermissionError as exc:      # 主程序正在读，等它一下
-            last_error = exc
-            time.sleep(0.02)
-    raise last_error
+            if tmp.exists():
+                tmp.unlink()
+        except OSError:
+            pass
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -332,73 +544,131 @@ class Runner(threading.Thread):
 
     # ── 主循环 ───────────────────────────────────────────────────
     def run(self):
+        loop_error = None
         try:
-            self._telemetry = AccTelemetry(log=self._log)
-        except Exception as exc:
-            self._note(t("log_telemetry_open_fail", exc))
-            return
-
-        engine = HapticsEngine(load_tuning())
-        tuning_file = config_path()
-        config_mtime = mtime_of(tuning_file)
-        last_config_check = 0.0
-        have_signal = False
-        interval = 1.0 / 60.0
-        next_tick = time.perf_counter()
-
-        while not self._stop_event.is_set():
-            now = time.perf_counter()
-            driver = self._sync_driver(engine)
-
             try:
-                snap = self._telemetry.latest()
+                self._telemetry = AccTelemetry(log=self._log)
             except Exception as exc:
-                self._note(t("log_telemetry_error", exc))
-                snap = None
+                self._note(t("log_telemetry_open_fail", exc))
+                return
 
-            if snap is None:
-                # 没数据就不要喂旧快照：清零一次，引擎的包络也一起清掉
-                if have_signal:
-                    have_signal = False
-                    engine.reset()
+            engine = HapticsEngine(load_tuning())
+            tuning_file = config_path()
+            config_mtime = mtime_of(tuning_file)
+            last_config_check = 0.0
+            have_signal = False
+            interval = 1.0 / 60.0
+            next_tick = time.perf_counter()
+
+            while not self._stop_event.is_set():
+                now = time.perf_counter()
+                driver = self._sync_driver(engine)
+
+                try:
+                    snap = self._telemetry.latest()
+                except Exception as exc:
+                    self._note(t("log_telemetry_error", exc))
+                    snap = None
+
+                if snap is None:
+                    # 没数据就不要喂旧快照：清零一次，引擎的包络也一起清掉
+                    if have_signal:
+                        have_signal = False
+                        engine.reset()
+                        if driver is not None:
+                            driver.set_vibration()
+                else:
+                    have_signal = True
                     if driver is not None:
-                        driver.set_vibration()
-            else:
-                have_signal = True
-                if driver is not None:
-                    try:
-                        driver.set_vibration(*engine.update(snap, now=now))
-                    except Exception as exc:
-                        self._note(t("log_master_error", exc))
+                        try:
+                            motors = engine.update(snap, now=now)
+                        except Exception as exc:
+                            # 这一帧算不出来：先让四个马达立刻归零，再清掉引擎状态。
+                            # 任何一步失败都不能挡住后面几步。
+                            have_signal = False
+                            self._note(t("log_master_error", exc))
+                            try:
+                                driver.set_vibration()
+                            except Exception as zero_exc:
+                                self._log(t("log_zero_fail", zero_exc))
+                            try:
+                                engine.reset()
+                            except Exception as reset_exc:
+                                self._log(t("log_reset_fail", reset_exc))
+                        else:
+                            try:
+                                driver.set_vibration(*motors)
+                            except Exception as exc:
+                                self._note(t("log_master_error", exc))
 
-            with self._guard:
-                self._state["acc"] = snap is not None
-                self._state["pad"] = bool(driver is not None and driver.connected)
-                self._state["driving"] = driver is not None
+                with self._guard:
+                    self._state["acc"] = snap is not None
+                    self._state["pad"] = bool(
+                        driver is not None and driver.connected)
+                    self._state["driving"] = driver is not None
 
-            # 手感文件热更新：面板自己写的也算，值一样，重载无害
-            if now - last_config_check >= 1.0:
-                last_config_check = now
-                mtime = mtime_of(tuning_file)
-                if mtime is not None and mtime != config_mtime:
-                    config_mtime = mtime
-                    engine.set_tuning(load_tuning(tuning_file))
-                    self._log(t("log_reloaded"))
+                # 手感文件热更新：面板自己写的也算，值一样，重载无害。
+                # 读取失败时继续用上次成功的设置，不跳回默认值。
+                if now - last_config_check >= 1.0:
+                    last_config_check = now
+                    mtime = mtime_of(tuning_file)
+                    if mtime is not None and mtime != config_mtime:
+                        config_mtime = mtime
+                        ok, tuning = load_tuning_result(
+                            tuning_file, fallback=engine.tuning)
+                        if ok:
+                            engine.set_tuning(tuning)
+                            self._log(t("log_reloaded"))
+                        else:
+                            self._note(t("log_reload_kept"))
 
-            next_tick += interval
-            delay = next_tick - time.perf_counter()
-            if delay > 0.0:
-                time.sleep(delay)
-            else:
-                next_tick = time.perf_counter()
+                next_tick += interval
+                delay = next_tick - time.perf_counter()
+                if delay > 0.0:
+                    time.sleep(delay)
+                else:
+                    next_tick = time.perf_counter()
+        except Exception as exc:
+            # 循环本身（不是单帧计算）炸了：记下来，交给 finally 统一收尾。
+            loop_error = exc
+            self._note(t("log_loop_exit", type(exc).__name__, exc))
+        finally:
+            self._cleanup(loop_error)
 
+    def _cleanup(self, loop_error=None):
+        """线程退出时一定走这里：停止写入、清零、关遥测、更新面板状态。
+
+        每一步单独 try：某一步失败也要把剩下的步骤做完。
+        """
         with self._guard:
             driver = self._driver
             self._driver = None
+            self._want_drive = False
+
         if driver is not None:
-            driver.stop()
-        if self._telemetry is not None:
-            self._telemetry.close()
+            try:
+                driver.set_vibration()
+            except Exception as exc:
+                self._log(t("log_cleanup_zero_fail", exc))
+            try:
+                driver.stop()
+            except Exception as exc:
+                self._log(t("log_cleanup_driver_fail", exc))
+
+        telemetry, self._telemetry = self._telemetry, None
+        if telemetry is not None:
+            try:
+                telemetry.close()
+            except Exception as exc:
+                self._log(t("log_cleanup_telemetry_fail", exc))
+
+        with self._guard:
+            self._state["driving"] = False
+            self._state["pad"] = False
+            self._state["acc"] = False
+            if loop_error is not None:
+                self._state["message"] = t(
+                    "log_loop_exit", type(loop_error).__name__, loop_error)
 
     def _sync_driver(self, engine):
         """起停都放在这个线程里做：start() 可能卡几百毫秒，不能放进界面线程。"""
@@ -749,13 +1019,19 @@ class Panel:
                    values["understeer_gain"], values["loss_gain"]))
 
     def _start(self):
-        if not proxy_installed():
+        kind, _path = proxy_state()
+        if kind == "unknown":
+            self.log(t("log_proxy_unknown_warn"))
+        elif kind != "ours":
             self.log(t("log_proxy_missing"))
         self.runner.set_drive(True)
         self.log(t("log_starting"))
 
     def _stop(self):
         self.runner.set_drive(False)
+
+    def _show_proxy_error(self, exc):
+        messagebox.showerror(t(exc.title_key), t(exc.body_key, *exc.body_args))
 
     def _install(self):
         folder = acc_bin()
@@ -770,13 +1046,19 @@ class Panel:
             return
         source = PROXY_SOURCE if PROXY_SOURCE.exists() else PROXY_LOCAL
         try:
-            shutil.copy2(source, folder / "xinput1_3.dll")
+            result = install_proxy(folder, source)
+        except ProxyError as exc:
+            self._show_proxy_error(exc)
+            return
         except PermissionError:
             messagebox.showerror(t("dlg_denied_title"), t("dlg_denied_body"))
             return
         except Exception as exc:
             messagebox.showerror(t("dlg_copy_fail_title"), str(exc))
             return
+        if result.get("backup_preserved"):
+            self.log(t("log_backup_preserved",
+                       str(Path(folder) / PROXY_BACKUP)))
         self.log(t("log_installed"))
         self._refresh_proxy_lamp()
 
@@ -788,31 +1070,38 @@ class Panel:
         if acc_running():
             messagebox.showwarning(t("dlg_running_title"), t("dlg_running_body"))
             return
-        current = folder / "xinput1_3.dll"
-        if not current.exists():
-            self.log(t("log_nothing_to_restore"))
-            self._refresh_proxy_lamp()
-            return
         try:
-            backup = folder / "xinput1_3.dll.off"
-            if backup.exists():
-                backup.unlink()
-            current.rename(backup)
-        except PermissionError:
-            messagebox.showerror(t("dlg_rename_denied_title"),
-                                 t("dlg_rename_denied_body"))
+            result = restore_proxy(folder)
+        except ProxyError as exc:
+            self._show_proxy_error(exc)
             return
         except Exception as exc:
             messagebox.showerror(t("dlg_restore_fail_title"), str(exc))
             return
-        self.log(t("log_restored"))
+        if result["action"] == "nothing":
+            self.log(t("log_nothing_to_restore"))
+            self._refresh_proxy_lamp()
+            return
+        if result["action"] == "moved":
+            self.log(t("log_restored_moved", result["target"],
+                       result["kept_backup"]))
+            messagebox.showinfo(
+                t("dlg_backup_kept_title"),
+                t("dlg_backup_kept_body", result["target"],
+                  result["kept_backup"]))
+        else:
+            self.log(t("log_restored"))
         self._refresh_proxy_lamp()
 
     # ── 刷新 ─────────────────────────────────────────────────────
     def _refresh_proxy_lamp(self):
-        if proxy_installed():
+        kind, _path = proxy_state()
+        if kind == "ours":
             self.lamps["proxy"].configure(text="●  " + t("lamp_proxy_on"),
                                           foreground=C_GREEN)
+        elif kind == "unknown":
+            self.lamps["proxy"].configure(text="?  " + t("lamp_proxy_unknown"),
+                                          foreground=C_AMBER)
         else:
             self.lamps["proxy"].configure(text="○  " + t("lamp_proxy_off"),
                                           foreground=C_RED)
