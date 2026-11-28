@@ -10,7 +10,7 @@ Adds Xbox controller **trigger haptics** to Assetto Corsa Competizione (ACC).
 ACC only rumbles the two grips; this program reads the game's telemetry and uses all four
 motors: grips for road feel, triggers for braking, throttle and tyre limits.
 
-**Current version: v0.2.3** · [Download the latest release](https://github.com/T51hway/acc-trigger-haptics/releases/latest) · about 10 MB, single file, no Python required.
+**Current version: v0.2.4** · [Download the latest release](https://github.com/T51hway/acc-trigger-haptics/releases/latest) · about 11 MB, single file, no Python required.
 
 ![Control panel](docs/panel.en.png)
 
@@ -22,7 +22,7 @@ motors: grips for road feel, triggers for braking, throttle and tyre limits.
 
 The program is not code-signed, so Windows may warn that the publisher is unknown. That is expected.
 
-- exe SHA256: `38da373cc7008436f276afb984f443be2d83445d8b0cee8356b1b9fb229b0507`
+- exe SHA256: `557b94e2353aaa80e1bf66785f0faeaf398513d0838c9358f791f764dd145d4f`
 - Proxy DLL SHA256: `8e284775850c9cba345b2b9912a71a45050f84c9186a0387387f5105cd4afe6c`
 - The proxy DLL is ~60 lines of C: [`proxy.c`](tools/xinput_proxy/proxy.c); build command in the README next to it
 - After downloading, double-click `校验哈希.bat` ("verify hash"): it compares the fingerprint above and tells you whether it matches (the exe only for a release-only download; the proxy DLL too when running from source)
@@ -109,28 +109,28 @@ It adds one file:
 - No existing files are changed, no driver is installed, no registry keys are written
 - Controller reads are forwarded unchanged to the system `xinput1_3.dll`; input is unaffected
 - Only `XInputSetState` (the call ACC uses to write rumble) is intercepted and returns success without forwarding
-- Delete or rename the file to restore everything; **Restore native** renames it to `xinput1_3.dll.off`
+- **Restore native** renames the project's proxy to `xinput1_3.dll.off` or chooses a timestamped name if that backup belongs to something else.
 
 For the full explanation (including how to compile it yourself), see
 [`tools/xinput_proxy/README.md`](tools/xinput_proxy/README.md).
 
 **Steam file verification may report one unexpected file**: that is the added DLL, which is expected.
-If you care, click **Restore native**, delete `xinput1_3.dll.off`, then verify.
+To verify after restoring native rumble, remove only the backup you know was created from this project's proxy.
 
 ### Manual install / restore
 
 If the panel is broken or cannot find ACC:
 
 - Install (when running from source): copy `tools\xinput_proxy\xinput1_3.dll`
-  into the `Win64` folder above
-- Restore: rename `xinput1_3.dll` to `xinput1_3.dll.off`, or delete it
+  into the `Win64` folder above if no `xinput1_3.dll` is present
+- Restore: rename this project's proxy to an unused backup name, or remove it if you are sure it belongs to this project
 
 ### Uninstall order (important)
 
 1. Click **Restore native** in the panel
 2. Close the panel
 3. Delete the exe, `手感设置.toml`, `panel.log`, `panel-settings.json`
-4. If `xinput1_3.dll.off` is still in the `Win64` folder, delete it too
+4. Remove the backup if you know it was created from this project's proxy
 
 **Do not** just delete the exe. If the proxy DLL stays in the game folder, ACC thinks rumble
 is still taken over, so neither the grips nor the triggers rumble — and nothing tells you why.

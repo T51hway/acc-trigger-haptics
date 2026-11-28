@@ -8,7 +8,7 @@
 给《神力科莎：竞技版》（ACC）补上 Xbox 手柄的**扳机震动**。ACC 原生只震两个握把；
 这个程序读游戏遥测，把四个马达都用起来：握把给路感，扳机给刹车、油门和轮胎极限。
 
-**当前版本 v0.2.3** · [下载最新版](https://github.com/T51hway/acc-trigger-haptics/releases/latest) · 约 10 MB，单文件，不需要安装 Python。
+**当前版本 v0.2.4** · [下载最新版](https://github.com/T51hway/acc-trigger-haptics/releases/latest) · 约 11 MB，单文件，不需要安装 Python。
 
 ![控制面板](docs/panel.png)
 
@@ -20,7 +20,7 @@
 
 程序没有数字签名，Windows 可能提示「未知发布者」，这是正常的。
 
-- exe 指纹（SHA256）：`38da373cc7008436f276afb984f443be2d83445d8b0cee8356b1b9fb229b0507`
+- exe 指纹（SHA256）：`557b94e2353aaa80e1bf66785f0faeaf398513d0838c9358f791f764dd145d4f`
 - 代理 DLL 指纹（SHA256）：`8e284775850c9cba345b2b9912a71a45050f84c9186a0387387f5105cd4afe6c`
 - 代理 DLL 只有 60 行 C 源码：[`proxy.c`](tools/xinput_proxy/proxy.c)，编译命令在同目录的 README
 - 下载后双击 `校验哈希.bat`，它会比对上面的指纹并告诉你是否一致（只下载 exe 时校验 exe；从源码使用时会连代理 DLL 一起校验）
@@ -100,28 +100,28 @@ ACC 用全屏时，Alt+Tab 切回面板；无边框窗口模式更方便调手�
 - 不改任何原有文件，不装驱动，不写注册表
 - 读手柄的调用原样转发给系统的 `xinput1_3.dll`，输入完全不受影响
 - 只拦截 `XInputSetState`（ACC 用来写震动的那一个调用），直接返回成功，不往下传
-- 删掉或改名就完全恢复；「恢复原生」就是把它改名成 `xinput1_3.dll.off`
+- 「恢复原生」会把本项目的代理改名为 `xinput1_3.dll.off`。如果已有归属不明的同名备份，会为代理另取一个带时间戳的名字。
 
 更细的说明（含自己编译的方法）见
 [`tools/xinput_proxy/README.md`](tools/xinput_proxy/README.md)。
 
 **Steam 校验文件可能报 1 个文件异常**：这是新增的 DLL，属正常现象。
-介意的话，先点「恢复原生」，再删掉 `xinput1_3.dll.off`，然后校验。
+要在恢复原生后校验，只删除确认由本项目代理生成的备份。
 
 ### 手动安装 / 卸载
 
 面板坏了或找不到 ACC 时，可以手动做：
 
 - 安装（从源码运行时）：把 `tools\xinput_proxy\xinput1_3.dll`
-  复制到上面的 `Win64` 目录
-- 恢复：把 `xinput1_3.dll` 改名成 `xinput1_3.dll.off`，或直接删掉
+  复制到上面的 `Win64` 目录，前提是目录里没有 `xinput1_3.dll`
+- 恢复：确认是本项目的代理后，把它改成一个未使用的备份文件名，或删除该代理
 
 ### 卸载顺序（重要）
 
 1. 面板上点 **「恢复原生」**
 2. 关闭面板
 3. 删除 exe、`手感设置.toml`、`panel.log`、`panel-settings.json`
-4. 如果 `Win64` 目录里还留着 `xinput1_3.dll.off`，一起删掉
+4. 删除确认由本项目代理生成的备份
 
 **不要**直接删 exe 就跑。代理 DLL 留在游戏目录里，ACC 会以为震动被接管了，
 结果握把和扳机都不震，而且没人告诉你为什么。
