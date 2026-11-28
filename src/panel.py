@@ -1139,8 +1139,13 @@ class Panel:
             self.log(t("log_proxy_unknown_warn"))
         elif kind != "ours":
             self.log(t("log_proxy_missing"))
-        self.runner.set_drive(True)
         self.log(t("log_starting"))
+        if self.runner.is_alive():
+            self.runner.set_drive(True)
+        else:
+            self.runner = Runner(self.log)
+            self.runner.set_drive(True)
+            self.runner.start()
 
     def _stop(self):
         self.runner.set_drive(False)

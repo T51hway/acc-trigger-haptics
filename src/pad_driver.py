@@ -77,6 +77,7 @@ LEVELS = 100                     # 报文里每个马达是 0~100 的整数
 # ── 时序 ────────────────────────────────────────────────────────────
 DEFAULT_HZ = 60.0                # 实测 60Hz 就够，120/200 没有更好
 RECONNECT_INTERVAL = 1.0         # 断开后多久试一次重连（秒）
+IDLE_PROBE_INTERVAL = 1.0        # 空闲时多久用全零报文检查一次连接（秒）
 STOP_JOIN_TIMEOUT = 2.0          # 等写入线程收尾的上限（秒）
 
 # ── 设备筛选 ────────────────────────────────────────────────────────
@@ -506,8 +507,9 @@ class PadDriver:
                 return
 
         levels = _levels(target)
-        # 完全静止在 0 就没什么可写的；只要不是全零，每个节拍都写。
-        if levels == (0, 0, 0, 0) and self._last_sent == (0, 0, 0, 0):
+        # 空闲时只定期探测连接；回零和有震动时仍在当前节拍写出。
+        if (levels == self._last_sent == (0, 0, 0, 0)
+                and time.perf_counter() - self._last_send_at < IDLE_PROBE_INTERVAL):
             return
         if not self._write_levels(levels):
             self._drop_link(t("pad_write_fail", ctypes.get_last_error()))
@@ -538,6 +540,7 @@ class PadDriver:
                 self._path = path
                 self._product_id = product_id
                 self._last_sent = (0, 0, 0, 0)
+                self._last_send_at = time.perf_counter()
                 self._say(t("pad_connected", product_id))
                 return True
             _close_handle(handle)
