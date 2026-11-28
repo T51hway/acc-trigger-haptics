@@ -829,6 +829,7 @@ class Panel:
         self._guard = threading.Lock()
         self._last_line = ""
         self._write_job = None
+        self._pending_values = {}
         self._flash_jobs = {}
         self._syncing = False
         self._closing = False
@@ -902,6 +903,7 @@ class Panel:
 
         # 滑块
         tuning = load_tuning()
+        tuning.update(self._pending_values)
         self.vars = {}
         self.value_vars = {}
         self.value_entries = {}
@@ -994,9 +996,7 @@ class Panel:
         code = "en" if self.lang_box.get() == "English" else "zh"
         if code == get_language():
             return
-        if self._write_job is not None:
-            self.root.after_cancel(self._write_job)
-            self._flush_values()
+        self._flush_values()
         set_language(code)
         settings = load_settings()
         settings["language"] = code
@@ -1026,6 +1026,7 @@ class Panel:
             return
         self._show_value(key)
         self._flash_entry(key, None)
+        self._pending_values[key] = round(self._current_value(key), 2)
         if self._write_job is not None:
             self.root.after_cancel(self._write_job)
         self._write_job = self.root.after(250, self._flush_values)
@@ -1072,10 +1073,9 @@ class Panel:
             self._syncing = False
         self._show_value(key)
 
-        if self._write_job is not None:
-            self.root.after_cancel(self._write_job)
-            self._write_job = None
-        self._flush_values()
+        self._pending_values[key] = round(clamped, 2)
+        if not self._flush_values():
+            return
 
         # 保存日志先写，再把范围提示放到最后，保证底部先看到的是提示。
         if clamped != value:
@@ -1117,17 +1117,21 @@ class Panel:
         self._flash_jobs[key] = self.root.after(1800, reset)
 
     def _flush_values(self):
-        self._write_job = None
-        values = {key: round(position_to_value(key, float(var.get())), 2)
-                  for key, var in self.vars.items()}
+        if self._write_job is not None:
+            self.root.after_cancel(self._write_job)
+            self._write_job = None
+        if not self._pending_values:
+            return True
         try:
-            save_values(config_path(), values)
+            save_values(config_path(), self._pending_values)
         except Exception as exc:
             self.log(t("log_save_fail", exc))
-            return
-        self.log(t("log_saved", values["grip_road"], values["trigger_floor"],
-                   values["throttle_floor"], values["trigger_event"],
-                   values["understeer_gain"], values["loss_gain"]))
+            return False
+        summary = " | ".join("%s %s" % (t(LABEL_KEYS[key]), format_value(key, value))
+                             for key, value in self._pending_values.items())
+        self._pending_values.clear()
+        self.log(t("log_saved", summary))
+        return True
 
     def _start(self):
         kind, _path = proxy_state()
@@ -1264,6 +1268,7 @@ class Panel:
             self.runner.shutdown()
         except Exception:
             pass
+        self._flush_values()
         self.log(t("log_exit"))
         self.root.destroy()
 
