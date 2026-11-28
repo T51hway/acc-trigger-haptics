@@ -442,18 +442,79 @@ _TOML_NUMBER = r"""
 """
 
 
-def _insert_top_level_key(text, key, value):
-    """把缺失的键放到第一张表之前，避免被写成表内键。"""
-    line = "%s = %.2f" % (key, value)
-    match = re.search(r"(?m)^[ \t]*\[", text)
-    if match is not None:
-        before = text[:match.start()]
-        if before and not before.endswith("\n"):
-            before += "\n"
-        return before + line + "\n" + text[match.start():]
-    if text and not text.endswith("\n"):
-        text += "\n"
-    return text + line + "\n"
+_ASSIGN_RE = re.compile(
+    r"(?m)^[ \t]*(?P<key>"
+    r'"(?:[^"\\\r\n]|\\.)*"'
+    r"|'[^'\r\n]*'"
+    r"|[A-Za-z0-9_-]+"
+    r")[ \t]*=[ \t]*(?P<num>%s)(?P<tail>[ \t]*(?:[#][^\r\n]*)?)$"
+    % _TOML_NUMBER,
+    re.VERBOSE,
+)
+_TABLE_RE = re.compile(r"(?m)^[ \t]*\[")
+
+
+def _parse_or_none(text):
+    """空文本按空表算；语法不完整（字符串/数组没闭合）时返回 None。"""
+    if not text.strip():
+        return {}
+    try:
+        return tomllib.loads(text)
+    except tomllib.TOMLDecodeError:
+        return None
+
+
+def _decode_key(raw):
+    """交给 tomllib 解码键，`"grip\\u005froad"` 也会还原成 grip_road。"""
+    try:
+        data = tomllib.loads(raw + " = 1")
+    except tomllib.TOMLDecodeError:
+        return None
+    return next(iter(data), None)
+
+
+def _find_root_span(text, key):
+    """返回根层 `key = 数字` 里数字的区间；表内同名的键不算。"""
+    for match in _ASSIGN_RE.finditer(text):
+        if _decode_key(match.group("key")) != key:
+            continue
+        prefix = text[:match.start()]
+        before = _parse_or_none(prefix)
+        if before is None or key in before:
+            continue
+        # 只有把这一行接到前缀后面能在根层引入 key，才是根层赋值。
+        after = _parse_or_none(prefix + match.group(0))
+        if after is not None and key in after:
+            return match.span("num")
+    return None
+
+
+def _insert_at(text):
+    """找真正的第一张表，缺失的根键插在它前面。
+
+    多行字符串/跨行数组里的 `[` 因前缀不是合法 TOML 而被跳过；
+    没有表时插在开头注释之后，保证仍然是根层键。
+    """
+    for match in _TABLE_RE.finditer(text):
+        prefix = text[:match.start()]
+        if _parse_or_none(prefix) is None:
+            continue
+        end = text.find("\n", match.start())
+        header = text[match.start():] if end < 0 else text[match.start():end]
+        if _parse_or_none(prefix + header) is not None:
+            return match.start()
+    # 只按物理换行（LF）分行；splitlines() 还会切 \u2028 等字符，
+    # 那可能正好出现在注释或字符串里，切开就会把键插进一行中间。
+    pos = 0
+    for match in re.finditer(r"[^\n]*\n?", text):
+        line = match.group(0)
+        if not line:
+            continue
+        stripped = line.strip()
+        if stripped and not stripped.startswith("#"):
+            break
+        pos = match.end()
+    return pos
 
 
 def save_values(path, values):
@@ -467,26 +528,43 @@ def save_values(path, values):
     if not path.exists():
         write_default_config(path)
     text = path.read_text(encoding="utf-8")
-    for key, value in values.items():
-        pattern = re.compile(
-            r"^(?P<head>[ \t]*%s[ \t]*=[ \t]*)(?P<num>%s)"
-            r"(?P<tail>[ \t]*(?:[#].*)?)$"
-            % (re.escape(key), _TOML_NUMBER),
-            re.MULTILINE | re.VERBOSE,
-        )
 
-        def _replace(match, value=value):
-            return "%s%.2f%s" % (match.group("head"), value, match.group("tail"))
+    try:
+        original = tomllib.loads(text)
+    except tomllib.TOMLDecodeError as exc:
+        raise ValueError(t("save_invalid_toml", exc)) from exc
 
-        text, count = pattern.subn(_replace, text, count=1)
-        if count == 0:
-            # 已有这个键但写法不是裸数字（例如加引号/数组）时不要追加，
-            # 否则会变成重复键。让用户先把那一行改回来。
-            if re.search(r"(?m)^[ \t]*%s[ \t]*=" % re.escape(key), text):
-                raise ValueError(t("save_not_applied",
-                                   "%s (existing value is not a bare number)"
-                                   % key))
-            text = _insert_top_level_key(text, key, value)
+    spans = {}
+    for key in values:
+        if key not in original:
+            continue
+        # 已有这个键但写法不是裸数字（例如加引号/数组）时不要追加，
+        # 否则会变成重复键。让用户先把那一行改回来。
+        if isinstance(original[key], bool) \
+                or not isinstance(original[key], (int, float)):
+            raise ValueError(t("save_not_applied",
+                               "%s (existing value is not a bare number)" % key))
+        span = _find_root_span(text, key)
+        if span is None:
+            raise ValueError(t("save_not_applied",
+                               "%s (existing value is not a bare number)" % key))
+        spans[key] = span
+
+    # 从后往前替换，前面的区间不会因为长度变化而错位。
+    for key in sorted(spans, key=lambda item: spans[item][0], reverse=True):
+        start, end = spans[key]
+        text = text[:start] + "%.2f" % float(values[key]) + text[end:]
+
+    missing = [key for key in values if key not in original]
+    if missing:
+        lines = "".join("%s = %.2f\n" % (key, float(values[key]))
+                        for key in missing)
+        at = _insert_at(text)
+        # 文件末尾没有换行时（例如只有一行注释），先补一个换行，
+        # 否则第一条赋值会和原来的内容粘在同一行里。
+        if at and text[at - 1:at] != "\n":
+            lines = "\n" + lines
+        text = text[:at] + lines + text[at:]
 
     try:
         parsed = tomllib.loads(text)
