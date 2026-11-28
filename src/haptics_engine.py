@@ -240,7 +240,7 @@ def config_path():
     return application_dir() / CONFIG_NAME
 
 
-def load_tuning_result(path=None, fallback=None):
+def load_tuning_result(path=None, fallback=None, report=None):
     """读手感设置，并告诉调用方这次到底读成功了没有。
 
     返回 (ok, tuning)：
@@ -248,7 +248,12 @@ def load_tuning_result(path=None, fallback=None):
         ok=False  读取/解析失败。给了 fallback 就原样返回它，让热更新继续用上次成功的值。
 
     首次启动没有配置文件时 fallback 是 None，仍然返回内置默认值，行为和以前一致。
+
+    report 是可选的回调，每条提示都交给它；不给就直接 print，和以前一样。
+    后台线程读文件时用它收集提示，别去重定向全局 stdout：那会把同一进程里
+    其他线程的输出一起吞掉。
     """
+    say = report if report is not None else print
     tuning = dict(DEFAULT_TUNING)
     path = Path(path) if path is not None else config_path()
     fallback = None if fallback is None else dict(fallback)
@@ -257,19 +262,19 @@ def load_tuning_result(path=None, fallback=None):
             data = tomllib.load(handle)
     except FileNotFoundError:
         if fallback is not None:
-            print(t("cfg_reload_missing", path.name))
+            say(t("cfg_reload_missing", path.name))
             return False, fallback
         return True, tuning
     except Exception as exc:
         if fallback is not None:
-            print(t("cfg_reload_fail", path.name, exc))
+            say(t("cfg_reload_fail", path.name, exc))
             return False, fallback
-        print(t("cfg_read_fail", path.name, exc))
+        say(t("cfg_read_fail", path.name, exc))
         return False, tuning
 
     for key in data:
         if key not in TUNING_RANGES:
-            print(t("cfg_unknown_key", key))
+            say(t("cfg_unknown_key", key))
 
     for key, (low, high) in TUNING_RANGES.items():
         if key not in data:
@@ -277,14 +282,14 @@ def load_tuning_result(path=None, fallback=None):
         try:
             value = float(data[key])
         except (TypeError, ValueError):
-            print(t("cfg_not_number", key))
+            say(t("cfg_not_number", key))
             continue
         if not math.isfinite(value):
-            print(t("cfg_not_finite", key))
+            say(t("cfg_not_finite", key))
             continue
         clamped = max(low, min(high, value))
         if clamped != value:
-            print(t("cfg_out_of_range", key, value, low, high, clamped))
+            say(t("cfg_out_of_range", key, value, low, high, clamped))
         tuning[key] = clamped
     return True, tuning
 

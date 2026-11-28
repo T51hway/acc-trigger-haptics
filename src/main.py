@@ -30,7 +30,7 @@ import time
 
 from acc_telemetry import AccTelemetry
 from haptics_engine import (
-    HapticsEngine, config_path, load_tuning, load_tuning_result,
+    HapticsEngine, config_path, load_tuning_result,
 )
 from i18n import set_language, system_language, t
 from pad_driver import PadBusy, PadDriver, PadError
@@ -42,6 +42,19 @@ def _file_mtime(path):
         return path.stat().st_mtime
     except OSError:
         return None
+
+
+def _read_tuning(path, fallback):
+    """读手感设置，返回 (ok, tuning, 提示文本)。
+
+    提示交给 load_tuning_result 的 report 回调收集，不去重定向 stdout。
+    热更新失败后会每秒重试，提示由调用方只在状态变化时说一次；
+    否则一个一直写坏的文件会每秒刷一行同样的错误。
+    """
+    notes = []
+    ok, tuning = load_tuning_result(
+        path, fallback=fallback, report=notes.append)
+    return ok, tuning, "\n".join(notes)
 
 
 def _source_names(trace, key):
@@ -99,7 +112,12 @@ def main():
 
     telemetry = AccTelemetry()
     tuning_file = config_path()
-    tuning = load_tuning(tuning_file)
+    # 先记时间戳再读文件：读的瞬间文件可能刚被改过，宁可下一轮多读一次，
+    # 也不能把没读到的版本当成已加载。
+    config_mtime = _file_mtime(tuning_file)
+    initial_ok, tuning, initial_detail = _read_tuning(tuning_file, None)
+    if initial_detail:
+        print(initial_detail)
     engine = HapticsEngine(tuning)
     if tuning_file.exists():
         print(t("cli_settings", tuning_file.name))
@@ -128,7 +146,7 @@ def main():
     have_signal = False
     last_status = 0.0
     exit_code = 0
-    config_mtime = _file_mtime(tuning_file)
+    reload_failed = not initial_ok
     last_config_check = 0.0
 
     try:
@@ -139,16 +157,24 @@ def main():
             if now - last_config_check >= 1.0:
                 last_config_check = now
                 mtime = _file_mtime(tuning_file)
-                if mtime is not None and mtime != config_mtime:
-                    config_mtime = mtime
-                    # 读失败时 load_tuning_result 交回上一次成功的设置，
-                    # 不会把档位跳回默认值；文件修好后 mtime 再变就会重读。
-                    ok, tuning = load_tuning_result(
-                        tuning_file, fallback=engine.tuning)
+                # 上次读失败就不看 mtime，下一轮接着重试：用户可能原地修好
+                # 文件但 mtime 没变（同秒写入、复制保留时间戳）。
+                if reload_failed or mtime != config_mtime:
+                    ok, tuning, detail = _read_tuning(
+                        tuning_file, engine.tuning)
                     if ok:
+                        config_mtime = mtime
+                        reload_failed = False
                         engine.set_tuning(tuning)
+                        if detail:
+                            print(detail, flush=True)
                         print(t("cfg_updated", _tuning_text(engine.tuning)),
                               flush=True)
+                    elif not reload_failed:
+                        # 一直坏着的文件只提示一次，重试过程保持安静。
+                        reload_failed = True
+                        if detail:
+                            print(detail, flush=True)
 
             if snap is None:
                 # 没数据就不要喂旧快照。清零一次，引擎的包络也一起清掉。

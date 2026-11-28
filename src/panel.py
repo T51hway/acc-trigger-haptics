@@ -411,6 +411,20 @@ def mtime_of(path):
         return None
 
 
+def read_tuning_quiet(path, fallback):
+    """读手感设置，返回 (ok, tuning, 提示文本)。
+
+    提示交给 load_tuning_result 的 report 回调收集，不去重定向 stdout：
+    Runner 是后台线程，redirect_stdout 会连主线程和其他线程的输出一起吞掉。
+    热更新失败后会每秒重试，提示由调用方只在状态变化时说一次；
+    否则一个一直写坏的文件会每秒刷一行同样的错误。
+    """
+    notes = []
+    ok, tuning = load_tuning_result(
+        path, fallback=fallback, report=notes.append)
+    return ok, tuning, "\n".join(notes)
+
+
 # TOML 合法的裸数字写法：普通整数/小数、指数、下划线分隔、十六/八/二进制、inf/nan。
 # 面板只写小数，但用户手改过的文件里可能是 1e0 或 1_0.0，必须原地替换而不是追加新键。
 _TOML_NUMBER = r"""
@@ -556,9 +570,16 @@ class Runner(threading.Thread):
                 self._note(t("log_telemetry_open_fail", exc))
                 return
 
-            engine = HapticsEngine(load_tuning())
             tuning_file = config_path()
+            # 先记时间戳再读文件：读的瞬间文件可能刚被改过，宁可下一轮多读一次，
+            # 也不能把没读到的版本当成已加载。
             config_mtime = mtime_of(tuning_file)
+            initial_ok, initial_tuning, initial_detail = read_tuning_quiet(
+                tuning_file, None)
+            if initial_detail:
+                self._log(initial_detail)
+            engine = HapticsEngine(initial_tuning)
+            reload_failed = not initial_ok
             last_config_check = 0.0
             have_signal = False
             interval = 1.0 / 60.0
@@ -616,15 +637,23 @@ class Runner(threading.Thread):
                 if now - last_config_check >= 1.0:
                     last_config_check = now
                     mtime = mtime_of(tuning_file)
-                    if mtime is not None and mtime != config_mtime:
-                        config_mtime = mtime
-                        ok, tuning = load_tuning_result(
-                            tuning_file, fallback=engine.tuning)
+                    # 上次读失败就不看 mtime，下一轮接着重试：用户可能原地
+                    # 修好文件但 mtime 没变（同秒写入、复制保留时间戳）。
+                    if reload_failed or mtime != config_mtime:
+                        ok, tuning, detail = read_tuning_quiet(
+                            tuning_file, engine.tuning)
                         if ok:
+                            config_mtime = mtime
+                            reload_failed = False
                             engine.set_tuning(tuning)
+                            if detail:
+                                self._log(detail.strip())
                             self._log(t("log_reloaded"))
-                        else:
-                            self._note(t("log_reload_kept"))
+                        elif not reload_failed:
+                            # 一直坏着的文件只提示一次，重试过程保持安静。
+                            reload_failed = True
+                            self._note(detail.strip()
+                                       or t("log_reload_kept"))
 
                 next_tick += interval
                 delay = next_tick - time.perf_counter()
